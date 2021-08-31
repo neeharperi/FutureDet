@@ -1,0 +1,15 @@
+**__pycache__**
+**build**
+**egg-info**
+*.pyc
+venv/
+*.idea/
+*.so
+*.yaml
+*.pth
+*.pkl
+*.zip
+*.bin
+.vscode/
+models/
+results/
