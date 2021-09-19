@@ -116,9 +116,9 @@ class Preprocess(object):
                     for i in range(len(gt_dict["gt_boxes"])):
                         for j in range(len(sampled_gt_boxes)):
                             try:
-                                sampled_gt_boxes[j][-3:] = sampled_dict["gt_forecast"][j][i]
+                                sampled_gt_boxes[j][-6:] = sampled_dict["gt_forecast"][j][i]
                             except:
-                                sampled_gt_boxes[j][-3:] = sampled_dict["gt_forecast"][j][0]
+                                sampled_gt_boxes[j][-6:] = sampled_dict["gt_forecast"][j][0]
 
                         gt_dict["gt_names"][i] = np.concatenate([gt_dict["gt_names"][i], sampled_gt_names], axis=0)
                         gt_dict["gt_boxes"][i] = np.concatenate([gt_dict["gt_boxes"][i], sampled_gt_boxes])
@@ -135,7 +135,7 @@ class Preprocess(object):
             gt_dict["gt_boxes"], points = prep.global_rotation(gt_dict["gt_boxes"], points, rotation=self.global_rotation_noise)
             gt_dict["gt_boxes"], points = prep.global_scaling_v2(gt_dict["gt_boxes"], points, *self.global_scaling_noise)
             gt_dict["gt_boxes"], points = prep.global_translate_(gt_dict["gt_boxes"], points, noise_translate_std=self.global_translate_std) 
-        
+
         elif self.no_augmentation:
             gt_boxes_mask = [np.array([n in self.class_names for n in gt_dict["gt_names"][i]], dtype=np.bool_) for i in range(len(gt_dict["gt_names"]))]
             _dict_select(gt_dict, gt_boxes_mask)
@@ -146,7 +146,7 @@ class Preprocess(object):
         if self.shuffle_points:
             rng = np.random.default_rng(0)
             rng.shuffle(points)
-
+        
         res["lidar"]["points"] = points
 
         if self.mode == "train":
@@ -336,6 +336,9 @@ class AssignLabel(object):
                     task_box[:, -1] = box_np_ops.limit_period(
                         task_box[:, -1], offset=0.5, period=np.pi * 2
                     )
+                    task_box[:, -2] = box_np_ops.limit_period(
+                        task_box[:, -2], offset=0.5, period=np.pi * 2
+                    )
 
                 # print(gt_dict.keys())
                 gt_dict["gt_classes"][i] = task_classes
@@ -354,7 +357,7 @@ class AssignLabel(object):
 
                     if res['type'] == 'NuScenesDataset':
                         # [reg, hei, dim, vx, vy, rots, rotc]
-                        anno_box = np.zeros((max_objs, 12), dtype=np.float32)
+                        anno_box = np.zeros((max_objs, 14), dtype=np.float32)
                     elif res['type'] == 'WaymoDataset':
                         anno_box = np.zeros((max_objs, 10), dtype=np.float32) 
                     else:
@@ -402,11 +405,13 @@ class AssignLabel(object):
 
                             if res['type'] == 'NuScenesDataset': 
                                 vx, vy = gt_dict['gt_boxes'][i][idx][k][6:8]
-                                dx, dy = gt_dict['gt_boxes'][i][idx][k][8:10]
+                                rvx, rvy = gt_dict['gt_boxes'][i][idx][k][8:10]
                                 rot = gt_dict['gt_boxes'][i][idx][k][10]
+                                rrot = gt_dict['gt_boxes'][i][idx][k][11]
+
                                 anno_box[new_idx] = np.concatenate(
                                     (ct - (x, y), z, np.log(gt_dict['gt_boxes'][i][idx][k][3:6]),
-                                    np.array(vx), np.array(vy), np.array(dx), np.array(dy), np.sin(rot), np.cos(rot)), axis=None)
+                                    np.array(vx), np.array(vy), np.array(rvx), np.array(rvy), np.sin(rot), np.cos(rot), np.sin(rrot), np.cos(rrot)), axis=None)
                             elif res['type'] == 'WaymoDataset':
                                 vx, vy = gt_dict['gt_boxes'][idx][k][6:8]
                                 rot = gt_dict['gt_boxes'][idx][k][-1]
@@ -427,7 +432,7 @@ class AssignLabel(object):
                 classes = merge_multi_group_label(gt_dict['gt_classes'][i], num_classes_by_task)
 
                 if res["type"] == "NuScenesDataset":
-                    gt_boxes_and_cls = np.zeros((max_objs, 12), dtype=np.float32)
+                    gt_boxes_and_cls = np.zeros((max_objs, 13), dtype=np.float32)
                 elif res['type'] == "WaymoDataset":
                     gt_boxes_and_cls = np.zeros((max_objs, 10), dtype=np.float32)
                 else:
@@ -438,7 +443,7 @@ class AssignLabel(object):
                 num_obj = len(boxes_and_cls)
                 assert num_obj <= max_objs
                 # x, y, z, w, l, h, rotation_y, velocity_x, velocity_y, class_name
-                boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 6, 7, 8, 9, 11]]
+                boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
                 gt_boxes_and_cls[:num_obj] = boxes_and_cls
 
                 example.update({'gt_boxes_and_cls': gt_boxes_and_cls})

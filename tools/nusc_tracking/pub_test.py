@@ -5,6 +5,11 @@ import numpy as np
 import mkl
 import os
 import sys 
+
+sys.path.append('/home/nperi/Workspace/CenterForecast')
+sys.path.append('/home/nperi/Workspace/Core/nuscenes-forecast/python-sdk')
+
+
 import json
 import time
 import copy
@@ -118,14 +123,15 @@ def main():
             nusc_anno = {
                 "sample_token": token,
                 "forecast_sample_tokens" : item['forecast_sample_tokens'],
+                "reverse_sample_tokens" : item['reverse_sample_tokens'],
                 "translation": item['translation'],
                 "size": item['size'],
                 "rotation": item['rotation'],
                 "forecast_rotation" : item['forecast_rotation'],
                 "velocity": item['velocity'],
                 "forecast_velocity" : item['forecast_velocity'],
-                "rvelocity": item['velocity'],
-                "forecast_rvelocity" : item['forecast_velocity'],
+                "rvelocity": item['rvelocity'],
+                "forecast_rvelocity" : item['forecast_rvelocity'],
                 "tracking_id": str(item['tracking_id']),
                 "tracking_name": item['detection_name'],
                 "tracking_score": item['detection_score'],

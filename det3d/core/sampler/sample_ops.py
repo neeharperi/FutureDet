@@ -105,6 +105,7 @@ class DataBaseSamplerV2:
         calib=None,
         road_planes=None,
     ):
+
         sampled_num_dict = {}
         sample_num_per_class = []
         for class_name, max_sample_num in zip(
@@ -258,12 +259,12 @@ class DataBaseSamplerV2:
         forecast = []
         for sample in sampled:
             try:
-                forecast.append([sample["box3d_lidar"][i][-3:] for i in range(len(sample["box3d_lidar"]))])
+                forecast.append([sample["box3d_lidar"][i][-6:] for i in range(len(sample["box3d_lidar"]))])
                 sample["name"] = sample["name"][0]
                 sample["box3d_lidar"] = sample["box3d_lidar"][0]
                 sample["difficulty"] = sample["difficulty"][0]
             except: 
-                forecast.append([sample["box3d_lidar"][-3:]])
+                forecast.append([sample["box3d_lidar"][-6:]])
 
       
 
@@ -272,7 +273,7 @@ class DataBaseSamplerV2:
         num_gt = gt_boxes.shape[0]
         num_sampled = len(sampled)
         gt_boxes_bv = box_np_ops.center_to_corner_box2d(
-            gt_boxes[:, 0:2], gt_boxes[:, 3:5], gt_boxes[:, -1]
+            gt_boxes[:, 0:2], gt_boxes[:, 3:5], gt_boxes[:, -2]
         )
 
         sp_boxes = np.stack([i["box3d_lidar"] for i in sampled], axis=0)

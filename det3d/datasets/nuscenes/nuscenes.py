@@ -1,4 +1,7 @@
 import sys
+
+sys.path.append('/home/nperi/Workspace/CenterForecast')
+sys.path.append('/home/nperi/Workspace/Core/nuscenes-forecast/python-sdk')
 import pickle
 import json
 import random
@@ -30,7 +33,6 @@ from det3d.datasets.nuscenes.nusc_common import (
 )
 from pyquaternion import Quaternion
 from det3d.datasets.registry import DATASETS
-from det3d.datasets.nuscenes.nusc_common import relative_coordinate_transform
 
 from tqdm import tqdm 
 
@@ -141,17 +143,12 @@ def get_token(scene_data, sample_data, sample_data_tokens, src_data_token, offse
     if timestep > len(scene_data[scene]) - 1:
         timestep = len(scene_data[scene]) - 1
 
+    if timestep < 0:
+        timestep = 0
+
     dst_data_token = sample_data[sample_data_tokens.index(scene_data[scene][timestep])]["token"]
 
     return dst_data_token
-
-def transform_coordinate(nusc, sample_data, sample_data_tokens, boxes, src_token, dst_token):    
-    src_data_token = sample_data[sample_data_tokens.index(src_token)]["data"]["LIDAR_TOP"]
-    dst_data_token = sample_data[sample_data_tokens.index(dst_token)]["data"]["LIDAR_TOP"]
-    
-    boxes = relative_coordinate_transform(nusc, boxes, src_data_token, dst_data_token)
-
-    return boxes
 
 def get_time(nusc, src_token, dst_token):
     time_last = 1e-6 * nusc.get('sample', src_token)["timestamp"]
@@ -165,38 +162,6 @@ def update_boxes(prev_boxes, curr_boxes, time_diff):
         cbox.center = pbox.center + time_diff * pbox.velocity      
 
     return curr_boxes
-
-def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast):
-    ret_boxes, ret_tokens = [], []
-    
-    det = deepcopy(det_forecast[0])
-    boxes = _second_det_to_nusc_box(det)
-    boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
-
-    ret_boxes.append(boxes)
-    ret_tokens.append(det["metadata"]["token"])
-
-
-    if forecast > 0:
-        for t in range(1, forecast + 1):
-            
-            if t > len(det_forecast) - 1:
-                det = deepcopy(det_forecast[-1])
-            else:
-                det = deepcopy(det_forecast[t])
-                
-            boxes = _second_det_to_nusc_box(det)
-            src_token, dst_token = ret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, ret_tokens[-1], 1)
-
-            boxes = _lidar_nusc_box_to_global(nusc, boxes, src_token) 
-
-            time_diff = get_time(nusc, src_token, dst_token)
-            boxes = update_boxes(ret_boxes[-1], boxes, time_diff)
-
-            ret_boxes.append(boxes), ret_tokens.append(dst_token)
-
-
-    return ret_boxes, ret_tokens
 
 
 def box_center(boxes):
@@ -234,16 +199,16 @@ def match_boxes(ret_boxes):
 
     return match_boxes
 
-def format_forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast):
-    ret_boxes, ret_tokens = [], []
+def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast):
+    fret_boxes, fret_tokens, rret_tokens = [], [], []
     
     det = deepcopy(det_forecast[0])
     boxes = _second_det_to_nusc_box(det)
     boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
 
-    ret_boxes.append(boxes)
-    ret_tokens.append(det["metadata"]["token"])
-
+    fret_boxes.append(boxes)
+    fret_tokens.append(det["metadata"]["token"])
+    rret_tokens.append(det["metadata"]["token"])
 
     if forecast > 0:
         for t in range(1, forecast + 1):
@@ -254,14 +219,15 @@ def format_forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det
                 det = deepcopy(det_forecast[t])
                 
             boxes = _second_det_to_nusc_box(det)
-            src_token, dst_token = ret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, ret_tokens[-1], 1)
+            src_token, dst_token = fret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, fret_tokens[-1], 1)
+            rdst_token = get_token(scene_data, sample_data, sample_data_tokens, rret_tokens[-1], -1)            
+            
             boxes = _lidar_nusc_box_to_global(nusc, boxes, src_token) 
+            fret_boxes.append(boxes), fret_tokens.append(dst_token), rret_tokens.append(rdst_token)
 
-            ret_boxes.append(boxes), ret_tokens.append(dst_token)
+        fret_boxes = match_boxes(fret_boxes)
 
-        ret_boxes = match_boxes(ret_boxes)
-
-    return ret_boxes, ret_tokens
+    return fret_boxes, fret_tokens, rret_tokens
 
 @DATASETS.register_module
 class NuScenesDataset(PointCloudDataset):
@@ -427,7 +393,7 @@ class NuScenesDataset(PointCloudDataset):
     def __getitem__(self, idx):
         return self.get_sensor_data(idx)
 
-    def evaluation(self, detections, output_dir=None, testset=False, forecast=0, root="/home/ubuntu/Workspace/Data/nuScenes"):
+    def evaluation(self, detections, output_dir=None, testset=False, forecast=6, tp_pct=0.6, root="/ssd0/nperi/nuScenes"):
         version = self.version
         eval_set_map = {
             "v1.0-mini": "mini_val",
@@ -479,8 +445,7 @@ class NuScenesDataset(PointCloudDataset):
             scene_data[scene_token].append(sample_tokens)
 
         for det_forecast in tqdm(dets):
-            #det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast)
-            det_boxes, tokens = format_forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast)
+            det_boxes, tokens, rtokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast)
             boxes, token = det_boxes[0], tokens[0]
             annos = []
 
@@ -507,37 +472,35 @@ class NuScenesDataset(PointCloudDataset):
                     else:
                         attr = None
                 
-                try:
-                    nusc_anno = {
-                        "sample_token": token,
-                        "forecast_sample_tokens" : tokens,
-                        "translation": box.center.tolist(),
-                        "size": box.wlh.tolist(),
-                        "rotation": box.orientation.elements.tolist(),
-                        "forecast_rotation" : [det_boxes[t][i].orientation.elements.tolist() for t in range(forecast)],
-                        "velocity": box.velocity[:2].tolist(),
-                        "forecast_velocity" : [det_boxes[t][i].velocity[:2].tolist() for t in range(forecast)],
-                        "rvelocity": box.rvelocity[:2].tolist(),
-                        "forecast_rvelocity" : [det_boxes[t][i].rvelocity[:2].tolist() for t in range(forecast)],
-                        "detection_name": name,
-                        "detection_score": box.score,
-                        "attribute_name": attr
-                        if attr is not None
-                        else max(cls_attr_dist[name].items(), key=operator.itemgetter(1))[
-                            0
-                        ],
-                    }
-                except:
-                    pdb.set_trace()
+                nusc_anno = {
+                    "sample_token": token,
+                    "forecast_sample_tokens" : tokens,
+                    "reverse_sample_tokens" : rtokens,
+                    "translation": box.center.tolist(),
+                    "size": box.wlh.tolist(),
+                    "rotation": box.orientation.elements.tolist(),
+                    "forecast_rotation" : [det_boxes[t][i].orientation.elements.tolist() for t in range(forecast)],
+                    "rrotation": box.rorientation.elements.tolist(),
+                    "forecast_rrotation" : [det_boxes[t][i].rorientation.elements.tolist() for t in range(forecast)],
+                    "velocity": box.velocity[:2].tolist(),
+                    "forecast_velocity" : [det_boxes[t][i].velocity[:2].tolist() for t in range(forecast)],
+                    "rvelocity": box.rvelocity[:2].tolist(),
+                    "forecast_rvelocity" : [det_boxes[t][i].rvelocity[:2].tolist() for t in range(forecast)],
+                    "detection_name": name,
+                    "detection_score": box.score,
+                    "attribute_name": attr
+                    if attr is not None
+                    else max(cls_attr_dist[name].items(), key=operator.itemgetter(1))[
+                        0
+                    ],
+                }
+
                 annos.append(nusc_anno)
 
             if token not in nusc_annos["results"].keys():
                 nusc_annos["results"][token] = []
 
             nusc_annos["results"][token] += annos
-
-        #if forecast > 0:
-        #    nusc_annos["results"] = forecast_nms(nusc_annos["results"])
 
         nusc_annos["meta"] = {
             "use_camera": False,
@@ -561,7 +524,8 @@ class NuScenesDataset(PointCloudDataset):
                 res_path,
                 eval_set_map[self.version],
                 output_dir,
-                forecast=forecast
+                forecast=forecast,
+                tp_pct=tp_pct
             )
 
             with open(Path(output_dir) / "metrics_summary.json", "r") as f:

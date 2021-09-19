@@ -185,13 +185,14 @@ class LoadPointCloudAnnotations(object):
             gt_boxes = info["gt_boxes"].astype(np.float32)
             gt_boxes[np.isnan(gt_boxes)] = 0
 
-            boxes, names, tokens, velocity, rvelocity = [], [], [], [], []
+            boxes, names, tokens, rtokens, velocity, rvelocity = [], [], [], [], [], []
             
             for i in range(res["metadata"]["timesteps"]):
                 try:
                     boxes.append(gt_boxes[:,i,:])
                     names.append(info["gt_names"][:,i])
                     tokens.append(info["gt_boxes_token"][:,i])
+                    rtokens.append(info["gt_boxes_rtoken"][:,i])
                     velocity.append(info["gt_boxes_velocity"][:,i,:].astype(np.float32))
                     rvelocity.append(info["gt_boxes_rvelocity"][:,i,:].astype(np.float32))
 
@@ -199,6 +200,7 @@ class LoadPointCloudAnnotations(object):
                     boxes.append(gt_boxes)
                     names.append(info["gt_names"])
                     tokens.append(info["gt_boxes_token"])
+                    rtokens.append(info["gt_boxes_rtoken"])
                     velocity.append(info["gt_boxes_velocity"].astype(np.float32))
                     rvelocity.append(info["gt_boxes_rvelocity"].astype(np.float32))
 
@@ -207,6 +209,7 @@ class LoadPointCloudAnnotations(object):
                 "boxes": boxes,
                 "names": names,
                 "tokens": tokens,
+                "rtokens": rtokens,
                 "velocities": velocity,
                 "rvelocities" : rvelocity,
             }

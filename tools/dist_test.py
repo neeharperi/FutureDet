@@ -5,6 +5,11 @@ import json
 import os
 import sys
 
+
+sys.path.append('/home/nperi/Workspace/CenterForecast')
+sys.path.append('/home/nperi/Workspace/Core/nuscenes-forecast/python-sdk')
+
+
 try:
     import apex
 except:
@@ -49,7 +54,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint", help="the dir to checkpoint which the model read from"
     )
-    parser.add_argument("--root", default="/home/ubuntu/Workspace/Data/nuScenes/"
+    parser.add_argument("--root", default="/ssd0/nperi/nuScenes/"
     )
     parser.add_argument(
         "--txt_result",
@@ -73,7 +78,8 @@ def parse_args():
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument("--testset", action="store_true")
     parser.add_argument("--extractBox", action="store_true")
-    parser.add_argument("--forecast", type=int, default=0)
+    parser.add_argument("--forecast", type=int, default=6)
+    parser.add_argument("--tp_pct", type=float, default=0.6)
 
     args = parser.parse_args()
     if "LOCAL_RANK" not in os.environ:
@@ -237,7 +243,7 @@ def main():
         return
     
     predictions = load_pred(args.work_dir)
-    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, root=args.root)
+    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, tp_pct=args.tp_pct, root=args.root)
 
     if result_dict is not None:
         for k, v in result_dict["results"].items():

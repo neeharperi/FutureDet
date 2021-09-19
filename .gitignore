@@ -11,5 +11,6 @@ venv/
 *.zip
 *.bin
 .vscode/
-models/
+models/*
 results/
+Visuals/

@@ -91,7 +91,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
+data_root = "/ssd0/nperi/nuScenes/mini_forecast"
 
 db_sampler = dict(
     type="GT-AUG",
@@ -177,7 +177,7 @@ test_anno = data_root + "/infos_test_10sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=40,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         root_path=data_root,

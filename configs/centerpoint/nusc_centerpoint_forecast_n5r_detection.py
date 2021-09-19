@@ -1,11 +1,9 @@
 import itertools
 import logging
 
-from numpy import true_divide
-
 from det3d.utils.config_tool import get_downsample_factor
 timesteps = 6
-DOUBLE_FLIP=True
+DOUBLE_FLIP=False
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -51,8 +49,8 @@ model = dict(
         tasks=tasks,
         dataset='nuscenes',
         weight=0.25,
-        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 0.2, 0.2, 1.0, 1.0],
-        common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'vel': (2, 2), 'rvel' : (2,2)},
+        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 0.2, 0.2, 1.0, 1.0, 1.0, 1.0],
+        common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'rrot':(2, 2), 'vel': (2, 2), 'rvel' : (2,2)},
         share_conv_channel=64,
         dcn_head=False,
         timesteps=timesteps
@@ -91,7 +89,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
+data_root = "/ssd0/nperi/nuScenes/trainval_forecast"
 
 db_sampler = dict(
     type="GT-AUG",
@@ -176,8 +174,8 @@ val_anno = data_root + "/infos_val_10sweeps_withvelo_filter_True.pkl"
 test_anno = data_root + "/infos_test_10sweeps_withvelo_filter_True.pkl"
 
 data = dict(
-    samples_per_gpu=3,
-    workers_per_gpu=3,
+    samples_per_gpu=1,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         root_path=data_root,
