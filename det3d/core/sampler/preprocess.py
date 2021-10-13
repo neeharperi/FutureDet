@@ -86,6 +86,11 @@ class DBFilterByMinNumPoint(DataBasePreprocessing):
 
     def _preprocess(self, db_infos):
         for name, min_num in self._min_gt_point_dict.items():
+
+            if name not in db_infos:
+                print("WARNING: {} not in db_infos".format(name))
+                continue
+
             if min_num > 0:
                 filtered_infos = []
                 for info in db_infos[name]:

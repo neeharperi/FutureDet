@@ -7,6 +7,7 @@ import time
 from collections import OrderedDict
 
 import torch
+import torch.nn as nn
 from det3d import torchie
 
 from . import hooks
@@ -399,6 +400,25 @@ class Trainer(object):
 
     def train(self, data_loader, epoch, **kwargs):
         self.model.train()
+
+        if self.cfg.TWO_STAGE:
+            def freeze_bn(m):
+                classname = m.__class__.__name__
+                if classname.find('BatchNorm2d') != -1 or classname.find('BatchNorm1d') != -1:
+                    m.eval()
+
+            def unfreeze_bn(m):
+                classname = m.__class__.__name__
+                if classname.find('BatchNorm2d') != -1 or classname.find('BatchNorm1d') != -1:
+                    m.train()
+
+            for name, module in self.model.named_modules():
+                if "forecast_conv" not in name and "reverse_conv" not in name and "vel" not in name and "rot" not in name and "rvel" not in name and "rrot" not in name:
+                    module.apply(freeze_bn)
+                else:
+                    module.apply(unfreeze_bn)
+
+
         self.mode = "train"
         self.data_loader = data_loader
         self.length = len(data_loader)
@@ -510,7 +530,7 @@ class Trainer(object):
 
         self.logger.info("resumed epoch %d, iter %d", self.epoch, self.iter)
 
-    def run(self, data_loaders, workflow, max_epochs, **kwargs):
+    def run(self, data_loaders, workflow, max_epochs, cfg, **kwargs):
         """ Start running.
 
         Args:
@@ -522,7 +542,7 @@ class Trainer(object):
         assert isinstance(data_loaders, list)
         assert torchie.is_list_of(workflow, tuple)
         assert len(data_loaders) == len(workflow)
-
+        self.cfg = cfg
         self._max_epochs = max_epochs
         work_dir = self.work_dir if self.work_dir is not None else "NONE"
         self.logger.info(

@@ -162,11 +162,25 @@ def flatten_model(m):
     return sum(map(flatten_model, m.children()), []) if len(list(m.children())) else [m]
 
 
-def get_layer_groups(m):
+def get_layer_groups(m, two_stage=False):
+    if two_stage:
+        layers = []
+        for task in m.bbox_head.tasks:
+            layers.append(task.forecast_conv)
+            layers.append(task.vel)
+            layers.append(task.rot)
+
+            if hasattr(task, "reverse_conv"):
+                layers.append(task.reverse_conv)
+                layers.append(task.rvel)
+                layers.append(task.rrot)
+
+        return [nn.Sequential(*flatten_model(nn.Sequential(*layers)))]
+
     return [nn.Sequential(*flatten_model(m))]
 
 
-def build_one_cycle_optimizer(model, optimizer_config):
+def build_one_cycle_optimizer(model, optimizer_config, two_stage=False):
     if optimizer_config.fixed_wd:
         optimizer_func = partial(
             torch.optim.Adam, betas=(0.9, 0.99), amsgrad=optimizer_config.amsgrad
@@ -177,7 +191,7 @@ def build_one_cycle_optimizer(model, optimizer_config):
     optimizer = OptimWrapper.create(
         optimizer_func,
         3e-3,   # TODO: CHECKING LR HERE !!!
-        get_layer_groups(model),
+        get_layer_groups(model, two_stage),
         wd=optimizer_config.wd,
         true_wd=optimizer_config.fixed_wd,
         bn_wd=True,
@@ -281,7 +295,7 @@ def train_detector(model, dataset, cfg, distributed=False, validate=False, logge
         model = apex.parallel.convert_syncbn_model(model)
     if cfg.lr_config.type == "one_cycle":
         # build trainer
-        optimizer = build_one_cycle_optimizer(model, cfg.optimizer)
+        optimizer = build_one_cycle_optimizer(model, cfg.optimizer, cfg.TWO_STAGE)
         lr_scheduler = _create_learning_rate_scheduler(
             optimizer, cfg.lr_config, total_steps
         )
@@ -299,7 +313,7 @@ def train_detector(model, dataset, cfg, distributed=False, validate=False, logge
             device_ids=[cfg.local_rank],
             output_device=cfg.local_rank,
             # broadcast_buffers=False,
-            find_unused_parameters=False,
+            find_unused_parameters=True if cfg.TWO_STAGE else False,
         )
     else:
         model = model.cuda()
@@ -336,4 +350,9 @@ def train_detector(model, dataset, cfg, distributed=False, validate=False, logge
     elif cfg.load_from:
         trainer.load_checkpoint(cfg.load_from)
 
-    trainer.run(data_loaders, cfg.workflow, cfg.total_epochs, local_rank=cfg.local_rank)
+    if cfg.TWO_STAGE:
+        for name, weights in model.named_parameters():
+            if "forecast_conv" not in name and "reverse_conv" not in name and "vel" not in name and "rot" not in name and "rvel" not in name and "rrot" not in name:
+                weights.requires_grad = False
+
+    trainer.run(data_loaders, cfg.workflow, cfg.total_epochs, cfg=cfg, local_rank=cfg.local_rank)

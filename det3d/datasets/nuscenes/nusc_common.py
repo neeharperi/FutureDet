@@ -9,6 +9,8 @@ from typing import List
 from tqdm import tqdm
 from pyquaternion import Quaternion
 
+from itertools import tee
+
 try:
     from nuscenes import NuScenes
     from nuscenes.utils import splits
@@ -320,15 +322,31 @@ def get_sample_data(
 
     return data_path, box_list, cam_intrinsic
 
+def window(iterable, size):
+    iters = tee(iterable, size)
+    for i in range(1, size):
+        for each in iters[i:]:
+            next(each, None)
+
+    return zip(*iters)
+
+def get_time(nusc, src_token, dst_token):
+    time_last = 1e-6 * nusc.get('sample', src_token)["timestamp"]
+    time_first = 1e-6 * nusc.get('sample', dst_token)["timestamp"]
+    time_diff = time_first - time_last
+
+    return time_diff 
 
 def get_annotations(nusc, annotations, ref_boxes, timesteps):
     forecast_annotations = []
     forecast_boxes = []   
+    forecast_timesteps = []
     sample_tokens = [s["token"] for s in nusc.sample]
 
     for annotation, ref_box in zip(annotations, ref_boxes):
         tracklet_box = []
         tracklet_annotation = []
+        tracklet_timesteps = [0]
 
         token = nusc.sample[sample_tokens.index(annotation["sample_token"])]["data"]["LIDAR_TOP"]
         sd_record = nusc.get("sample_data", token)
@@ -342,9 +360,9 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
                       rcenter = pannotation["translation"],
                       size = ref_box.wlh,
                       orientation = Quaternion(annotation["rotation"]),
-                      velocity = nusc.box_velocity(annotation["token"]),
+                      velocity = nusc.forecast_velocity(annotation["token"]),
                       rorientation = Quaternion(pannotation["rotation"]),
-                      rvelocity = nusc.box_velocity(pannotation["token"]),
+                      rvelocity = nusc.forecast_velocity(pannotation["token"]),
                       name = annotation["category_name"],
                       token = annotation["token"],
                       rtoken = pannotation["token"])
@@ -365,7 +383,7 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
 
             tracklet_box.append(box)
             tracklet_annotation.append(annotation)
-
+            
             next_token = annotation["next"]
             prev_token = pannotation["prev"]
 
@@ -374,9 +392,20 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
             
             if prev_token != "":
                 pannotation = nusc.get("sample_annotation", prev_token)
-            
+        
+        for boxes in window(tracklet_annotation, 2):
+            time = get_time(nusc, boxes[0]["sample_token"], boxes[1]["sample_token"])
+            tracklet_timesteps.append(0.5 if time == 0 else time)
+        
+        for i in range(1, len(tracklet_box)):
+            center = tracklet_box[i - 1].center + tracklet_box[i - 1].velocity * tracklet_timesteps[i]
+
+            if np.array_equal(tracklet_box[i].center, tracklet_box[i - 1].center) and np.linalg.norm(tracklet_box[i - 1].center) != 0:
+                tracklet_box[i].center = center
+
         forecast_boxes.append(tracklet_box)
         forecast_annotations.append(tracklet_annotation)
+        forecast_timesteps.append(tracklet_timesteps)
 
     return forecast_boxes, forecast_annotations
 
@@ -493,6 +522,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
         if not test:
             annotations = [nusc.get("sample_annotation", token) for token in sample["anns"]]
             forecast_boxes, forecast_annotations = get_annotations(nusc, annotations, ref_boxes, timesteps)
+
             mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts']) > 0 for anno in annotations], dtype=bool).reshape(-1)
             locs = [np.array([b.center for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
             rlocs = [np.array([b.rcenter for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
@@ -520,7 +550,6 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
                     info["gt_names"] = np.array([[general_to_detection[n] for n in name] for name in names])
                     info["gt_boxes_token"] = np.array(tokens)
                     info["gt_boxes_rtoken"] = np.array(rtokens)
-
                 else:
                     info["gt_boxes"] = np.array(gt_boxes)[mask, :]
                     info["gt_boxes_velocity"] = np.array(velocity)[mask, :]
@@ -530,7 +559,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
                     info["gt_boxes_rtoken"] = np.array(rtokens)[mask]
 
             else:
-                mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts'])>0 for anno in annotations], dtype=bool).reshape(-1)
+                mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts']) >0 for anno in annotations], dtype=bool).reshape(-1)
 
                 locs = np.array([b.center for b in ref_boxes]).reshape(-1, 3)
                 dims = np.array([b.wlh for b in ref_boxes]).reshape(-1, 3)
@@ -637,7 +666,7 @@ def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainv
             pickle.dump(val_nusc_infos, f)
 
 
-def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct):
+def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, reverse, static_only, cohort_analysis):
     # nusc = NuScenes(version=version, dataroot=str(root_path), verbose=True)
     cfg = config_factory(eval_version)
 
@@ -649,6 +678,9 @@ def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_p
         output_dir=output_dir,
         verbose=True,
         forecast=forecast,
-        tp_pct=tp_pct
+        tp_pct=tp_pct,
+        reverse=reverse,
+        static_only=static_only,
+        cohort_analysis=cohort_analysis
     )
-    metrics_summary = nusc_eval.main(plot_examples=10,)
+    metrics_summary = nusc_eval.main(plot_examples=10,cohort_analysis=cohort_analysis)

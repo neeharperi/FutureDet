@@ -2,8 +2,12 @@ import itertools
 import logging
 
 from det3d.utils.config_tool import get_downsample_factor
+
 timesteps = 6
 DOUBLE_FLIP=False
+TWO_STAGE=False 
+REVERSE=True
+CONSISTENCY=False
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -49,11 +53,14 @@ model = dict(
         tasks=tasks,
         dataset='nuscenes',
         weight=0.25,
-        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 0.2, 0.2, 1.0, 1.0, 1.0, 1.0],
-        common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'rrot':(2, 2), 'vel': (2, 2), 'rvel' : (2,2)},
+        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0, 1.0],
+        common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'vel': (2, 2)},
         share_conv_channel=64,
         dcn_head=False,
-        timesteps=timesteps
+        timesteps=timesteps,
+        two_stage=TWO_STAGE,
+        reverse=REVERSE,
+        consistency=CONSISTENCY
     ),
 )
 
@@ -175,7 +182,7 @@ test_anno = data_root + "/infos_test_10sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         root_path=data_root,

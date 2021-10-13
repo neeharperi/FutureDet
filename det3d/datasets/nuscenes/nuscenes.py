@@ -16,7 +16,7 @@ from collections import defaultdict
 try:
     from nuscenes.nuscenes import NuScenes
     from nuscenes.eval.detection.config import config_factory
-    from nuscenes.eval.detection.constants import DETECTION_NAMES
+    from nuscenes.eval.detection.constants import getDetectionNames
     from nuscenes.utils.data_classes import Box
 except:
     print("nuScenes devkit not found!")
@@ -36,106 +36,6 @@ from det3d.datasets.registry import DATASETS
 
 from tqdm import tqdm 
 
-
-def get_sample_data(pred):
-    box_list = [] 
-    score_list = [] 
-    pred = pred.copy() 
-
-    for item in pred:    
-        box =  Box(item['translation'], item['size'], Quaternion(item['rotation']),
-                name=item['detection_name'])
-        score_list.append(item['detection_score'])
-        box_list.append(box)
-
-    top_boxes = reorganize_boxes(box_list)
-    top_scores = np.array(score_list).reshape(-1)
-
-    return top_boxes, top_scores
-
-def reorganize_boxes(box_lidar_nusc):
-    rots = []
-    centers = []
-    wlhs = []
-    for i, box_lidar in enumerate(box_lidar_nusc):
-        v = np.dot(box_lidar.rotation_matrix, np.array([1, 0, 0]))
-        rot = np.arctan2(v[1], v[0])
-
-        rots.append(-rot- np.pi / 2)
-        centers.append(box_lidar.center)
-        wlhs.append(box_lidar.wlh)
-
-    rots = np.asarray(rots)
-    centers = np.asarray(centers)
-    wlhs = np.asarray(wlhs)
-    gt_boxes_lidar = np.concatenate([centers.reshape(-1,3), wlhs.reshape(-1,3), rots[..., np.newaxis].reshape(-1,1) ], axis=1)
-    
-    return gt_boxes_lidar
-
-def reorganize_pred_by_class(pred):
-    ret_dicts = defaultdict(list)
-    for item in pred: 
-        ret_dicts[item['detection_name']].append(item) 
-
-    return ret_dicts
-
-def group_classes(pred):
-    ret_dicts = {"object" : []}
-    for item in pred: 
-        ret_dicts["object"].append(item) 
-
-    return ret_dicts
-
-def _circle_nms(boxes, min_radius, post_max_size=83):
-    """
-    NMS according to center distance
-    """
-    keep = np.array(circle_nms(boxes.cpu().numpy(), thresh=min_radius))[:post_max_size]
-
-    keep = torch.from_numpy(keep).long().to(boxes.device)
-
-    return keep  
-
-def forecast_nms(predictions, group_by="none"):
-    res = {}
-    for sample_token, prediction in tqdm(predictions.items()):
-        annos = []
-        # reorganize pred by class 
-
-        if group_by == "class":
-            pred_dicts = reorganize_pred_by_class(prediction)
-        elif group_by == "none":
-            pred_dicts = group_classes(prediction)
-        else:
-            assert False, "Invalid group_by {}".format(group_by)
-
-        for name, pred in pred_dicts.items():
-            # in global coordinate 
-            top_boxes, top_scores = get_sample_data(pred)
-
-            with torch.no_grad():
-                top_boxes_tensor = torch.from_numpy(top_boxes)
-                boxes_for_nms = top_boxes_tensor[:, [0, 1, 2, 4, 3, 5, -1]]
-                boxes_for_nms[:, -1] = boxes_for_nms[:, -1] + np.pi /2 
-                top_scores_tensor = torch.from_numpy(top_scores)
-
-                selected = box_torch_ops.rotate_nms_pcdet(boxes_for_nms.float().cuda(), top_scores_tensor.float().cuda(), 
-                                    thresh=0.2,
-                                    pre_maxsize=None,
-                                    post_max_size=50)
-        
-                #centers = boxes_for_nms[:, [0, 1]] 
-                #boxes = torch.cat([centers, top_scores_tensor.float().view(-1, 1)], dim=1)
-                #selected = _circle_nms(boxes, min_radius=1, post_max_size=50)  
-            
-            pred = [pred[s] for s in selected]
-
-            annos.extend(pred)
-
-        res.update({sample_token: annos})
-
-    return res 
-
 def get_token(scene_data, sample_data, sample_data_tokens, src_data_token, offset):
     scene = sample_data[sample_data_tokens.index(src_data_token)]["scene_token"]
     timestep = scene_data[scene].index(src_data_token) + offset
@@ -149,19 +49,6 @@ def get_token(scene_data, sample_data, sample_data_tokens, src_data_token, offse
     dst_data_token = sample_data[sample_data_tokens.index(scene_data[scene][timestep])]["token"]
 
     return dst_data_token
-
-def get_time(nusc, src_token, dst_token):
-    time_last = 1e-6 * nusc.get('sample', src_token)["timestamp"]
-    time_first = 1e-6 * nusc.get('sample', dst_token)["timestamp"]
-    time_diff = time_first - time_last
-
-    return time_diff 
-
-def update_boxes(prev_boxes, curr_boxes, time_diff):
-    for pbox, cbox in zip(prev_boxes, curr_boxes):
-        cbox.center = pbox.center + time_diff * pbox.velocity      
-
-    return curr_boxes
 
 
 def box_center(boxes):
@@ -196,7 +83,7 @@ def match_boxes(ret_boxes):
 
     for box, match in zip(ret_boxes, idx):
         match_boxes.append(np.array(box)[match])
-
+    
     return match_boxes
 
 def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast):
@@ -211,7 +98,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
     rret_tokens.append(det["metadata"]["token"])
 
     if forecast > 0:
-        for t in range(1, forecast + 1):
+        for t in range(1, forecast):
             
             if t > len(det_forecast) - 1:
                 det = deepcopy(det_forecast[-1])
@@ -222,7 +109,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
             src_token, dst_token = fret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, fret_tokens[-1], 1)
             rdst_token = get_token(scene_data, sample_data, sample_data_tokens, rret_tokens[-1], -1)            
             
-            boxes = _lidar_nusc_box_to_global(nusc, boxes, src_token) 
+            boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"]) 
             fret_boxes.append(boxes), fret_tokens.append(dst_token), rret_tokens.append(rdst_token)
 
         fret_boxes = match_boxes(fret_boxes)
@@ -265,9 +152,8 @@ class NuScenesDataset(PointCloudDataset):
         self.painted = kwargs.get('painted', False)
         if self.painted:
             self._num_point_features += 10 
-
+        
         self.version = version
-        self.eval_version = "detection_cvpr_2019"
         self.timesteps = kwargs.get("timesteps", None)
         
     def reset(self):
@@ -393,13 +279,8 @@ class NuScenesDataset(PointCloudDataset):
     def __getitem__(self, idx):
         return self.get_sensor_data(idx)
 
-    def evaluation(self, detections, output_dir=None, testset=False, forecast=6, tp_pct=0.6, root="/ssd0/nperi/nuScenes"):
-        version = self.version
-        eval_set_map = {
-            "v1.0-mini": "mini_val",
-            "v1.0-trainval": "val",
-            "v1.0-test": "test",
-        }
+    def evaluation(self, detections, output_dir=None, testset=False, forecast=7, tp_pct=0.6, root="/ssd0/nperi/nuScenes", reverse=False, static_only=False, cohort_analysis=False, split="val", version="v1.0-trainval"):
+        self.eval_version = "detection_forecast"
 
         if not testset:
             dets = []
@@ -443,7 +324,7 @@ class NuScenesDataset(PointCloudDataset):
                 scene_data[scene_token] = []
 
             scene_data[scene_token].append(sample_tokens)
-
+        
         for det_forecast in tqdm(dets):
             det_boxes, tokens, rtokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast)
             boxes, token = det_boxes[0], tokens[0]
@@ -479,13 +360,13 @@ class NuScenesDataset(PointCloudDataset):
                     "translation": box.center.tolist(),
                     "size": box.wlh.tolist(),
                     "rotation": box.orientation.elements.tolist(),
-                    "forecast_rotation" : [det_boxes[t][i].orientation.elements.tolist() for t in range(forecast)],
+                    "forecast_rotation" : [det_boxes[t][i].orientation.elements.tolist() for t in range(forecast - 1)],
                     "rrotation": box.rorientation.elements.tolist(),
-                    "forecast_rrotation" : [det_boxes[t][i].rorientation.elements.tolist() for t in range(forecast)],
+                    "forecast_rrotation" : [det_boxes[t][i].rorientation.elements.tolist() for t in range(forecast - 1)],
                     "velocity": box.velocity[:2].tolist(),
-                    "forecast_velocity" : [det_boxes[t][i].velocity[:2].tolist() for t in range(forecast)],
+                    "forecast_velocity" : [det_boxes[t][i].velocity[:2].tolist() for t in range(forecast - 1)],
                     "rvelocity": box.rvelocity[:2].tolist(),
-                    "forecast_rvelocity" : [det_boxes[t][i].rvelocity[:2].tolist() for t in range(forecast)],
+                    "forecast_rvelocity" : [det_boxes[t][i].rvelocity[:2].tolist() for t in range(forecast - 1)],
                     "detection_name": name,
                     "detection_score": box.score,
                     "attribute_name": attr
@@ -509,23 +390,27 @@ class NuScenesDataset(PointCloudDataset):
             "use_map": False,
             "use_external": False,
         }
-
+        
         name = self._info_path.split("/")[-1].split(".")[0]
         res_path = str(Path(output_dir) / Path(name + ".json"))
+        
         with open(res_path, "w") as f:
             json.dump(nusc_annos, f)
-
+        
         print(f"Finish generate predictions for testset, save to {res_path}")
 
         if not testset:
             eval_main(
-                nusc,
-                self.eval_version,
+                nusc,        
+                "detection_forecast_cohort" if cohort_analysis else "detection_forecast",
                 res_path,
-                eval_set_map[self.version],
+                split,
                 output_dir,
                 forecast=forecast,
-                tp_pct=tp_pct
+                tp_pct=tp_pct,
+                reverse=reverse,
+                static_only=static_only,
+                cohort_analysis=cohort_analysis
             )
 
             with open(Path(output_dir) / "metrics_summary.json", "r") as f:
@@ -533,7 +418,8 @@ class NuScenesDataset(PointCloudDataset):
 
             detail = {}
             result = f"Nusc {version} Evaluation\n"
-            for name in mapped_class_names:
+
+            for name in getDetectionNames(cohort_analysis):
                 detail[name] = {}
                 for k, v in metrics["label_aps"][name].items():
                     detail[name][f"dist@{k}"] = v

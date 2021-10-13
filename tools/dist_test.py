@@ -80,6 +80,11 @@ def parse_args():
     parser.add_argument("--extractBox", action="store_true")
     parser.add_argument("--forecast", type=int, default=6)
     parser.add_argument("--tp_pct", type=float, default=0.6)
+    parser.add_argument("--reverse", action="store_true")
+    parser.add_argument("--static_only", action="store_true")
+    parser.add_argument("--cohort_analysis", action="store_true")
+    parser.add_argument("--split", default="val")
+    parser.add_argument("--version", default="v1.0-trainval")
 
     args = parser.parse_args()
     if "LOCAL_RANK" not in os.environ:
@@ -87,13 +92,6 @@ def parse_args():
 
     return args
 
-
-def merge_dict(orig, new):
-    orig["box3d_lidar"] = torch.cat([orig["box3d_lidar"], new["box3d_lidar"]])
-    orig["scores"] = torch.cat([orig["scores"], new["scores"]])
-    orig["label_preds"] = torch.cat([orig["label_preds"], new["label_preds"]])
-
-    return orig
     
 def main():
 
@@ -133,11 +131,17 @@ def main():
         print("Use Test Set")
         dataset = build_dataset(cfg.data.test)
     else:
-        print("Use Val Set")
-        dataset = build_dataset(cfg.data.val)
+        if args.split == "val" or args.split == "mini_val":
+            print("Use Val Set")
+            dataset = build_dataset(cfg.data.val)
+        else:
+            print("Use Train Set")
+            cfg.data.val.info_path = cfg.data.val.info_path.replace("infos_val_10sweeps_withvelo_filter_True", "infos_train_10sweeps_withvelo_filter_True")
+            cfg.data.val.ann_file = cfg.data.val.info_path.replace("infos_val_10sweeps_withvelo_filter_True", "infos_train_10sweeps_withvelo_filter_True")
+            dataset = build_dataset(cfg.data.val)
 
     if args.extractBox:
-        nusc = NuScenes(version="v1.0-trainval", dataroot=args.root, verbose=False)
+        nusc = NuScenes(version=args.version, dataroot=args.root, verbose=False)
         sample_data = [s for s in nusc.sample]
         scene_tokens = [s["scene_token"] for s in nusc.sample]
 
@@ -174,7 +178,6 @@ def main():
             model = model.cuda()
 
         model.eval()
-        mode = "val"
 
         logger.info(f"work dir: {args.work_dir}")
         if cfg.local_rank == 0:
@@ -243,7 +246,7 @@ def main():
         return
     
     predictions = load_pred(args.work_dir)
-    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, tp_pct=args.tp_pct, root=args.root)
+    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, tp_pct=args.tp_pct, root=args.root, reverse=args.reverse, static_only=args.static_only, cohort_analysis=args.cohort_analysis, split=args.split, version=args.version)
 
     if result_dict is not None:
         for k, v in result_dict["results"].items():

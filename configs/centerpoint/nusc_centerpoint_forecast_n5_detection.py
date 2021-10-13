@@ -1,11 +1,12 @@
 import itertools
 import logging
 
-from numpy import true_divide
-
 from det3d.utils.config_tool import get_downsample_factor
 timesteps = 6
 DOUBLE_FLIP=False
+TWO_STAGE=False 
+REVERSE=False
+CONSISTENCY=True
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -55,7 +56,10 @@ model = dict(
         common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'vel': (2, 2)},
         share_conv_channel=64,
         dcn_head=False,
-        timesteps=timesteps
+        timesteps=timesteps,
+        two_stage=TWO_STAGE,
+        reverse=REVERSE,
+        consistency = CONSISTENCY,
     ),
 )
 
@@ -91,7 +95,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/ssd0/nperi/nuScenes/trainval_forecast"
+data_root = "/ssd0/nperi/nuScenes/mini_forecast"
 
 db_sampler = dict(
     type="GT-AUG",
@@ -177,7 +181,7 @@ test_anno = data_root + "/infos_test_10sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         root_path=data_root,

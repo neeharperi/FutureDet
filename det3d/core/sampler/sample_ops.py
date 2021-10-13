@@ -255,6 +255,9 @@ class DataBaseSamplerV2:
             return ret, np.ones((len(ret),), dtype=np.int64)
 
     def sample_class_v2(self, name, num, gt_boxes):
+        if name not in self._sampler_dict:
+            return [], []
+
         sampled = self._sampler_dict[name].sample(num)
         forecast = []
         for sample in sampled:

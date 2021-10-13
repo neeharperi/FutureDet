@@ -14,7 +14,7 @@ from det3d.core import box_torch_ops
 import torch
 from det3d.torchie.cnn import kaiming_init
 from torch import double, nn
-from det3d.models.losses.centernet_loss import FastFocalLoss, RegLoss
+from det3d.models.losses.centernet_loss import FastFocalLoss, RegLoss, ForecastLoss
 from det3d.models.utils import Sequential
 from ..registry import HEADS
 import copy 
@@ -75,11 +75,31 @@ class SepHead(nn.Module):
         final_kernel=1,
         bn=False,
         init_bias=-2.19,
+        two_stage=False,
         **kwargs,
     ):
         super(SepHead, self).__init__(**kwargs)
 
         self.heads = heads 
+        self.two_stage = two_stage
+
+        if self.two_stage:
+            if "vel" in self.heads and "rot" in self.heads:
+                self.forecast_conv = nn.Sequential(
+                    nn.Conv2d(head_conv, head_conv,
+                    kernel_size=3, padding=1, bias=True),
+                    nn.BatchNorm2d(head_conv),
+                    nn.ReLU(inplace=True)
+                )
+
+            if "rvel" in self.heads and "rrot" in self.heads: 
+                self.reverse_conv = nn.Sequential(
+                    nn.Conv2d(in_channels, head_conv,
+                    kernel_size=3, padding=1, bias=True),
+                    nn.BatchNorm2d(head_conv),
+                    nn.ReLU(inplace=True)
+                )
+
         for head in self.heads:
             classes, num_conv = self.heads[head]
 
@@ -109,6 +129,16 @@ class SepHead(nn.Module):
     def forward(self, x):
         ret_dict = dict()        
         for head in self.heads:
+
+            if self.two_stage:
+                if head in ["vel", "rot"]:
+                    shared_forecast = self.forecast_conv(x)
+                    ret_dict[head] = self.__getattr__(head)(shared_forecast)
+
+                if head in ["rvel", "rrot"]:
+                    shared_reverse = self.reverse_conv(x)
+                    ret_dict[head] = self.__getattr__(head)(shared_reverse)
+
             ret_dict[head] = self.__getattr__(head)(x)
 
         return ret_dict
@@ -184,8 +214,16 @@ class CenterHead(nn.Module):
         num_hm_conv=2,
         dcn_head=False,
         timesteps=1,
+        two_stage=False,
+        reverse=False,
+        consistency=False,
+
     ):
         super(CenterHead, self).__init__()
+        
+        self.two_stage = two_stage 
+        self.reverse = reverse
+        self.consistency = consistency
 
         num_classes = [len(t["class_names"]) for t in tasks]
         self.class_names = [t["class_names"] for t in tasks]
@@ -193,12 +231,24 @@ class CenterHead(nn.Module):
         self.box_n_dim = 7  
 
         if 'vel' in common_heads and 'rvel' in common_heads and 'rot' in common_heads and 'rrot' in common_heads:
-            self.box_n_dim = 12
-            self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]))
+            self.box_n_dim = 13
+            if self.consistency:
+                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]))
+
+            else:
+                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]))
+            
+            self.code_weights_two_stage_forecast = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
 
         elif 'vel' in common_heads and 'rot' in common_heads:
             self.box_n_dim = 9
-            self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1]))
+
+            if consistency:
+                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([1, 1, 0, 0, 0, 0, 1, 1, 1, 1]))
+            else:
+                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1]))
+
+            self.code_weights_two_stage_forecast = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1]
 
 
         self.weight = weight  # weight between hm loss and loc loss
@@ -209,7 +259,8 @@ class CenterHead(nn.Module):
 
         self.crit = FastFocalLoss()
         self.crit_reg = RegLoss()
-
+        self.crit_forecast = ForecastLoss()
+        
         self.use_direction_classifier = False 
 
         self.timesteps = timesteps
@@ -242,11 +293,14 @@ class CenterHead(nn.Module):
                 if head in ["rot", "rrot", "vel", 'rvel']:
                     heads[head] = (timesteps * heads[head][0], heads[head][1])
                 
+                if self.consistency and head in ["reg"]:
+                    heads[head] = (timesteps * heads[head][0], heads[head][1])
+
             if not dcn_head:
                 heads.update(dict(hm=(num_cls, num_hm_conv)))
 
                 self.tasks.append(
-                    SepHead(share_conv_channel, heads, bn=True, init_bias=init_bias, final_kernel=3)
+                    SepHead(share_conv_channel, heads, bn=True, init_bias=init_bias, final_kernel=3, two_stage=self.two_stage)
                 )
             else:
                 self.tasks.append(
@@ -269,30 +323,52 @@ class CenterHead(nn.Module):
 
     def loss(self, example, preds_dicts, **kwargs):
         rets = []
-
         for task_id, preds_dict in enumerate(preds_dicts):
             # heatmap focal loss
             hm = self.num_classes[task_id]
             preds_dict['hm'] = self._sigmoid(preds_dict['hm'])
 
-            hm_loss = self.crit(preds_dict['hm'], example['hm'][0][task_id], example['ind'][0][task_id], example['mask'][0][task_id], example['cat'][0][task_id])
+            if self.two_stage:
+                hm_loss = torch.tensor(0).cuda()
+            elif self.reverse:
+                hm_loss = self.crit(preds_dict['hm'], example['hm'][-1][task_id], example['ind'][-1][task_id], example['mask'][-1][task_id], example['cat'][-1][task_id])
+            else:
+                hm_loss = self.crit(preds_dict['hm'], example['hm'][0][task_id], example['ind'][0][task_id], example['mask'][0][task_id], example['cat'][0][task_id])
 
-            target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)]
+            if self.reverse:
+                target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)][::-1]
+            else:
+                target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)]
 
             # reconstruct the anno_box from multiple reg heads
             if self.dataset in ['waymo', 'nuscenes']:
                 if 'vel' in preds_dict and 'rvel' in preds_dict and 'rot' in preds_dict and 'rrot' in preds_dict:
-                    preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
-                                    preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::], preds_dict['rrot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
-                
+
+                    if self.consistency:
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
+                                        preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::], preds_dict['rrot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    else:
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                        preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::], preds_dict['rrot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    
                 elif 'vel' in preds_dict:
-                    preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
-                                                        preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    if self.consistency:
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
+                                                            preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    else:
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                                            preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                   
+                   
                     target_box = [target_box[i][..., [0, 1, 2, 3, 4, 5, 6, 7, -2, -1]] for i in range(self.timesteps)]# remove vel target                       
 
                 else:
-                    preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
-                                                        preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    if self.consistency:
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
+                                                            preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    else:
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                                            preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
                     target_box = [target_box[i][..., [0, 1, 2, 3, 4, 5, -2, -1]] for i in range(self.timesteps)]# remove vel target                       
             else:
                 raise NotImplementedError()
@@ -300,24 +376,43 @@ class CenterHead(nn.Module):
             ret = {}
 
             # Regression loss for dimension, offset, height, rotation   
-            box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
+            if self.reverse:
+                box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][-1][task_id], example['ind'][-1][task_id], target_box[i]) for i in range(self.timesteps)]
 
+                if self.consistency:
+                    consistency_loss = [self.crit_forecast(preds_dict['anno_box'][i - 1], preds_dict['anno_box'][i], target_box[i - 1], target_box[i], example['mask'][-1][task_id], example['ind'][-1][task_id], reverse=self.reverse).sum() for i in range(1, self.timesteps)]
+
+            else:
+                box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
+
+                if self.consistency:
+                    consistency_loss = [self.crit_forecast(preds_dict['anno_box'][i - 1], preds_dict['anno_box'][i], target_box[i - 1], target_box[i], example['mask'][0][task_id], example['ind'][0][task_id], reverse=self.reverse).sum() for i in range(1, self.timesteps)]
+            
             loc_loss = []
             for i in range(self.timesteps):
-                loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights)).sum() if i == 0 else (box_loss[i] * box_loss[i].new_tensor(self.code_weights_forecast)).sum())
+                if self.two_stage:
+                    loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights_two_stage_forecast)).sum())
+                else:
+                    loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights)).sum() if i == 0 else (box_loss[i] * box_loss[i].new_tensor(self.code_weights_forecast)).sum())
             
-            loss = hm_loss + self.weight * sum(loc_loss)
+
+            if self.consistency:
+                loss = hm_loss + self.weight * (sum(loc_loss) + sum(consistency_loss))
+
+            else:
+                loss = hm_loss + self.weight * sum(loc_loss)
 
             ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(sum([example['mask'][i][task_id].float() for i in range(self.timesteps)])))})
             rets.append(ret)
 
         """convert batch-key to key-batch
         """
+
         rets_merged = defaultdict(list)
         for ret in rets:
             for k, v in ret.items():
                 rets_merged[k].append(v)
-        
+
         return rets_merged
 
     @torch.no_grad()
@@ -328,7 +423,6 @@ class CenterHead(nn.Module):
         rets = []
         metas = []
         double_flip = test_cfg.get('double_flip', False)
-
         post_center_range = test_cfg.post_center_limit_range
         if len(post_center_range) > 0:
             post_center_range = torch.tensor(
@@ -369,7 +463,6 @@ class CenterHead(nn.Module):
                 if double_flip:
                     meta_list = meta_list[:4*int(batch_size):4]
 
-            hm = self.num_classes[task_id]
             #batch_hm = torch.sigmoid(preds_dict['hm'])
             batch_hm = torch.sigmoid(preds_dict['hm'])
             
@@ -378,7 +471,8 @@ class CenterHead(nn.Module):
 
             batch_rots = [preds_dict['rot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
             batch_rotc = [preds_dict['rot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
-            if 'rvel' in preds_dict and 'rrot' in preds_dict:
+            
+            if  'rrot' in preds_dict:
                 batch_rrots = [preds_dict['rrot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
                 batch_rrotc = [preds_dict['rrot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
             
@@ -418,7 +512,7 @@ class CenterHead(nn.Module):
                     batch_rots[i] = batch_rots[i].mean(dim=1)
 
             batch_rot = [torch.atan2(batch_rots[i], batch_rotc[i]) for i in range(self.timesteps)]
-            if 'rvel' in preds_dict and 'rrot' in preds_dict:
+            if 'rrot' in preds_dict:
                 batch_rrot = [torch.atan2(batch_rrots[i], batch_rrotc[i]) for i in range(self.timesteps)]
 
             batch, H, W, num_cls = batch_hm.size()
@@ -427,7 +521,7 @@ class CenterHead(nn.Module):
             batch_hei = batch_hei.reshape(batch, H*W, 1)
 
             batch_rot = [batch_rot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
-            if 'rvel' in preds_dict and 'rrot' in preds_dict:
+            if 'rrot' in preds_dict:
                 batch_rrot = [batch_rrot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
 
             batch_dim = batch_dim.reshape(batch, H*W, 3)
@@ -443,24 +537,20 @@ class CenterHead(nn.Module):
             xs = xs * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
             ys = ys * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
             
-            if 'rvel' in preds_dict and 'rrot' in preds_dict:
-                batch_vel = [preds_dict['vel'][...,2*i:2*i+2] for i in range(self.timesteps)]
+            if 'rvel' in preds_dict:
                 batch_rvel = [preds_dict['rvel'][...,2*i:2*i+2] for i in range(self.timesteps)]
 
-                if double_flip:
-                    for i in range(self.timesteps):
-                        # flip vy
-                        batch_vel[i][:, 1, ..., 1] *= -1
-                        # flip vx
-                        batch_vel[i][:, 2, ..., 0] *= -1
+                for i in range(self.timesteps):
+                    # flip vy
+                    batch_rvel[i][:, 1, ..., 1] *= -1
+                    # flip vx
+                    batch_rvel[i][:, 2, ..., 0] *= -1
 
-                        batch_vel[i][:, 3] *= -1
-                        
-                        batch_vel[i] = batch_vel[i].mean(dim=1)
-
-                batch_vel = [batch_vel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
+                    batch_rvel[i][:, 3] *= -1
+                    
+                    batch_rvel[i] = batch_rvel[i].mean(dim=1)
+                
                 batch_rvel = [batch_rvel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
-
                 batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rvel[i], batch_rot[i], batch_rrot[i]], dim=2) for i in range(self.timesteps)]
             
             elif 'vel' in preds_dict:
@@ -512,7 +602,7 @@ class CenterHead(nn.Module):
 
             ret_forecast_list.append(ret_list)
 
-        return ret_forecast_list
+        return ret_forecast_list #timestamps, num_samples, ...
 
     @torch.no_grad()
     def post_processing(self, batch_box_preds, batch_hm, test_cfg, post_center_range, task_id):
@@ -535,7 +625,11 @@ class CenterHead(nn.Module):
             scores = scores[mask]
             labels = labels[mask]
 
-            boxes_for_nms = box_preds[:, [0, 1, 2, 3, 4, 5, -2]]
+            if batch_box_preds.shape[-1] == 9:
+                boxes_for_nms = box_preds[:, [0, 1, 2, 3, 4, 5, -1]]
+
+            else:
+                boxes_for_nms = box_preds[:, [0, 1, 2, 3, 4, 5, -2]]
 
             if test_cfg.get('circular_nms', False):
                 centers = boxes_for_nms[:, [0, 1]] 
