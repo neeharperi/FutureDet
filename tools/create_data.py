@@ -5,8 +5,8 @@ import pickle
 import fire, os
 import sys 
 
-sys.path.append('/home/nperi/Workspace/CenterForecast')
-sys.path.append('/home/nperi/Workspace/Core/nuscenes-forecast/python-sdk')
+sys.path.append('/home/ubuntu/Workspace/CenterForecast')
+sys.path.append('/home/ubuntu/Workspace/Core/nuscenes-forecast/python-sdk')
 
 from det3d.datasets.nuscenes import nusc_common as nu_ds
 from det3d.datasets.utils.create_gt_database import create_groundtruth_database

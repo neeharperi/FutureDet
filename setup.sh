@@ -20,5 +20,5 @@ python setup.py bdist_wheel
 cd ~/Workspace/Core/spconv/dist
 pip install * --force-reinstall
 
-cd ~/Workspace/Core/apex
-pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+#cd ~/Workspace/Core/apex
+#pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./

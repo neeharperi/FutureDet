@@ -1,7 +1,8 @@
 import sys
 
-sys.path.append('/home/nperi/Workspace/CenterForecast')
-sys.path.append('/home/nperi/Workspace/Core/nuscenes-forecast/python-sdk')
+sys.path.append('/home/ubuntu/Workspace/CenterForecast')
+sys.path.append('/home/ubuntu/Workspace/Core/nuscenes-forecast/python-sdk')
+
 import pickle
 import json
 import random
