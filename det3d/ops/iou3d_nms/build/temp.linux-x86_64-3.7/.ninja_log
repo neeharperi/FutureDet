@@ -1,5 +1,5 @@
 # ninja log v5
-1	2129	1634151938464728657	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_kernel.o	10fca460c2407161
-0	15893	1634151952224776554	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_cpu.o	a2e939ecf827337c
-1	16466	1634151952800778559	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms.o	9359169ca0d35167
-1	22675	1634151959004800154	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_api.o	47c0089346c4af6a
+1	2722	1634532979494812204	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_kernel.o	10fca460c2407161
+0	16540	1634532993314812560	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_cpu.o	a2e939ecf827337c
+1	17493	1634532994266812585	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms.o	9359169ca0d35167
+1	24090	1634533000858812754	/home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_api.o	47c0089346c4af6a

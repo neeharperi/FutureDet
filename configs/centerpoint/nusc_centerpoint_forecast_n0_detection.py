@@ -97,7 +97,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/ssd0/nperi/nuScenes/trainval_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
 
 db_sampler = dict(
     type="GT-AUG",

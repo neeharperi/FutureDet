@@ -1,3 +1,3 @@
 # ninja log v5
-0	17751	1634151926108685647	/home/ubuntu/Workspace/CenterForecast/det3d/ops/dcn/build/temp.linux-x86_64-3.7/src/deform_conv_cuda_kernel.o	2cd3f8589e6b82bc
-0	25417	1634151933772712325	/home/ubuntu/Workspace/CenterForecast/det3d/ops/dcn/build/temp.linux-x86_64-3.7/src/deform_conv_cuda.o	a4e90a5e1a5e5d3e
+0	19247	1634532963950811804	/home/ubuntu/Workspace/CenterForecast/det3d/ops/dcn/build/temp.linux-x86_64-3.7/src/deform_conv_cuda_kernel.o	2cd3f8589e6b82bc
+0	29742	1634532974442812073	/home/ubuntu/Workspace/CenterForecast/det3d/ops/dcn/build/temp.linux-x86_64-3.7/src/deform_conv_cuda.o	a4e90a5e1a5e5d3e

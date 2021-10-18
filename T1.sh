@@ -1,3 +1,2 @@
-python train.py --experiment Forecast --model forecast_n5_t
-python train.py --experiment Forecast --model forecast_n5r
-python train.py --experiment Forecast --model forecast_n5
+python evaluate.py --experiment Forecast --model forecast_n3 --extractBox
+python evaluate.py --experiment Forecast --model forecast_n3r --extractBox

@@ -2,11 +2,10 @@ import itertools
 import logging
 
 from det3d.utils.config_tool import get_downsample_factor
-
-timesteps = 6
+timesteps = 7
 DOUBLE_FLIP=False
 TWO_STAGE=False 
-REVERSE=True
+REVERSE=False
 CONSISTENCY=False
 
 tasks = [
@@ -60,7 +59,7 @@ model = dict(
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        consistency=CONSISTENCY
+        consistency = CONSISTENCY,
     ),
 )
 
@@ -96,7 +95,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/ssd0/nperi/nuScenes/trainval_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
 
 db_sampler = dict(
     type="GT-AUG",

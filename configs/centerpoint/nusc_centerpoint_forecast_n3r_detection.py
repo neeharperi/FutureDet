@@ -2,12 +2,12 @@ import itertools
 import logging
 
 from det3d.utils.config_tool import get_downsample_factor
-timesteps = 6
+
+timesteps = 7
 DOUBLE_FLIP=False
-TWO_STAGE=True
-REVERSE=False
-DENSE=False
-SPARSE=False
+TWO_STAGE=False 
+REVERSE=True
+CONSISTENCY=False
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -60,8 +60,7 @@ model = dict(
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        dense=DENSE,
-        sparse=SPARSE,
+        consistency=CONSISTENCY
     ),
 )
 
@@ -97,7 +96,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/ssd0/nperi/nuScenes/trainval_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
 
 db_sampler = dict(
     type="GT-AUG",
@@ -183,7 +182,7 @@ test_anno = data_root + "/infos_test_10sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         root_path=data_root,
@@ -241,11 +240,11 @@ log_config = dict(
 )
 # yapf:enable
 # runtime settings
-total_epochs = 10
+total_epochs = 20
 device_ids = range(8)
 dist_params = dict(backend="nccl", init_method="env://")
 log_level = "INFO"
 work_dir = './models/{}/'.format(__file__[__file__.rfind('/') + 1:-3])
-load_from = "/home/nperi/Workspace/CenterForecast/models/Forecast/nusc_centerpoint_forecast_n0_detection/latest.pth"
+load_from = None
 resume_from = None 
 workflow = [('train', 1)]
