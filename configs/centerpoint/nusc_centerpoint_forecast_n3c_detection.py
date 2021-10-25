@@ -6,7 +6,7 @@ timesteps = 7
 DOUBLE_FLIP=False
 TWO_STAGE=False 
 REVERSE=False
-CONSISTENCY=False
+CONSISTENCY=True
 DENSE=False
 MULTI_CENTER=False
 GUIDED_MULTI_CENTER=False
@@ -101,7 +101,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
 
 db_sampler = dict(
     type="GT-AUG",

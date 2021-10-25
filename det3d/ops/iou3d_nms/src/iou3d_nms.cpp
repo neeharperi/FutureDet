@@ -130,7 +130,7 @@ int nms_gpu(at::Tensor boxes, at::Tensor keep, float nms_overlap_thresh){
             }
         }
     }
-    if ( cudaSuccess != cudaGetLastError() ) printf( "Error!\n" );
+    if ( cudaSuccess != cudaGetLastError() ) printf( "iou3d_nms.cpp 133. Error!\n" );
 
     return num_to_keep;
 }
@@ -180,7 +180,7 @@ int nms_normal_gpu(at::Tensor boxes, at::Tensor keep, float nms_overlap_thresh){
             }
         }
     }
-    if ( cudaSuccess != cudaGetLastError() ) printf( "Error!\n" );
+    if ( cudaSuccess != cudaGetLastError() ) printf( "iou3d_nms.cpp 183. Error!\n" );
 
     return num_to_keep;
 }

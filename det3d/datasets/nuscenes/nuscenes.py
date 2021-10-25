@@ -13,6 +13,7 @@ import pdb
 from pathlib import Path
 from copy import deepcopy
 from collections import defaultdict
+from itertools import tee
 
 try:
     from nuscenes.nuscenes import NuScenes
@@ -36,6 +37,21 @@ from pyquaternion import Quaternion
 from det3d.datasets.registry import DATASETS
 
 from tqdm import tqdm 
+
+def window(iterable, size):
+    iters = tee(iterable, size)
+    for i in range(1, size):
+        for each in iters[i:]:
+            next(each, None)
+
+    return zip(*iters)
+
+def get_time(nusc, src_token, dst_token):
+    time_last = 1e-6 * nusc.get('sample', src_token)["timestamp"]
+    time_first = 1e-6 * nusc.get('sample', dst_token)["timestamp"]
+    time_diff = time_first - time_last
+
+    return time_diff 
 
 def get_token(scene_data, sample_data, sample_data_tokens, src_data_token, offset):
     scene = sample_data[sample_data_tokens.index(src_data_token)]["scene_token"]
@@ -87,16 +103,32 @@ def match_boxes(ret_boxes):
     
     return match_boxes
 
-def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast):
-    fret_boxes, fret_tokens, rret_tokens = [], [], []
+def box_serialize(box, token, name, attr):
+    ret = {"sample_token": token,
+            "translation": box.center.tolist(),
+            "size": box.wlh.tolist(),
+            "rotation": box.orientation.elements.tolist(),
+            "velocity": box.velocity[:2].tolist(),
+            "detection_name": name,
+            "detection_score": box.score,
+            "attribute_name": attr
+            if attr is not None
+            else max(cls_attr_dist[name].items(), key=operator.itemgetter(1))[
+                0
+                    ],
+        }
+
+    return ret 
+
+def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode):
+    ret_boxes, ret_tokens = [], []
     
     det = deepcopy(det_forecast[0])
     boxes = _second_det_to_nusc_box(det)
-    boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
+    #boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
 
-    fret_boxes.append(boxes)
-    fret_tokens.append(det["metadata"]["token"])
-    rret_tokens.append(det["metadata"]["token"])
+    ret_boxes.append(boxes)
+    ret_tokens.append(det["metadata"]["token"])
 
     if forecast > 0:
         for t in range(1, forecast):
@@ -107,15 +139,55 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                 det = deepcopy(det_forecast[t])
                 
             boxes = _second_det_to_nusc_box(det)
-            src_token, dst_token = fret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, fret_tokens[-1], 1)
-            rdst_token = get_token(scene_data, sample_data, sample_data_tokens, rret_tokens[-1], -1)            
+            src_token, dst_token = ret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, ret_tokens[-1], 1)
             
-            boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"]) 
-            fret_boxes.append(boxes), fret_tokens.append(dst_token), rret_tokens.append(rdst_token)
+            ret_boxes.append(boxes), ret_tokens.append(dst_token)
 
-        fret_boxes = match_boxes(fret_boxes)
+        ret_boxes = match_boxes(ret_boxes)
+    
+    trajectory_boxes = []
+    for j in range(len(ret_boxes[0])):
+        boxes = []      
 
-    return fret_boxes, fret_tokens, rret_tokens
+        for i in range(1, forecast):
+            boxes.append(ret_boxes[i][j])
+
+        trajectory_boxes.append(boxes)
+    
+    time = []
+    for src, dst in window(ret_tokens, 2):
+        time.append(get_time(nusc, src, dst))
+
+    if forecast_mode == "velocity_forward":
+        ret_boxes = []
+        for trajectory_box in trajectory_boxes:
+            forecast_boxes = [trajectory_box[0]]
+            for i in range(forecast - 1):
+                new_box = deepcopy(forecast_boxes[-1])
+                new_box.center = new_box.center + time[i] * forecast_boxes[-1].velocity
+
+                forecast_boxes.append(new_box)
+
+            ret_boxes.append(forecast_boxes)
+
+    if forecast_mode == "velocity_reverse":
+        ret_boxes = []
+        for trajectory_box in trajectory_boxes:
+            forecast_boxes = [trajectory_box[0]]
+            for i in range(forecast - 1):
+                new_box = deepcopy(forecast_boxes[-1])
+                new_box.center = new_box.center - time[i] * forecast_boxes[-1].velocity
+
+                forecast_boxes.append(new_box)
+
+            ret_boxes.append(forecast_boxes[::-1])
+
+    forecast_boxes = []
+    for boxes in ret_boxes:
+        boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"]) 
+        forecast_boxes.append(boxes)
+
+    return forecast_boxes, ret_tokens
 
 @DATASETS.register_module
 class NuScenesDataset(PointCloudDataset):
@@ -280,7 +352,7 @@ class NuScenesDataset(PointCloudDataset):
     def __getitem__(self, idx):
         return self.get_sensor_data(idx)
 
-    def evaluation(self, detections, output_dir=None, testset=False, forecast=7, tp_pct=0.6, root="/ssd0/nperi/nuScenes", reverse=False, static_only=False, cohort_analysis=False, split="val", version="v1.0-trainval"):
+    def evaluation(self, detections, output_dir=None, testset=False, forecast=7, forecast_mode="velocity_forward", tp_pct=0.6, root="/ssd0/nperi/nuScenes", static_only=False, cohort_analysis=False, split="val", version="v1.0-trainval"):
         self.eval_version = "detection_forecast"
 
         if not testset:
@@ -327,11 +399,12 @@ class NuScenesDataset(PointCloudDataset):
             scene_data[scene_token].append(sample_tokens)
         
         for det_forecast in tqdm(dets):
-            det_boxes, tokens, rtokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast)
-            boxes, token = det_boxes[0], tokens[0]
+            det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode)
             annos = []
 
-            for i, box in enumerate(boxes):
+            for i, boxes in enumerate(det_boxes):
+                box, token = boxes[0], tokens[0]
+
                 name = mapped_class_names[box.label]
                 if np.sqrt(box.velocity[0] ** 2 + box.velocity[1] ** 2) > 0.2:
                     if name in [
@@ -356,18 +429,11 @@ class NuScenesDataset(PointCloudDataset):
                 
                 nusc_anno = {
                     "sample_token": token,
-                    "forecast_sample_tokens" : tokens,
-                    "reverse_sample_tokens" : rtokens,
                     "translation": box.center.tolist(),
                     "size": box.wlh.tolist(),
                     "rotation": box.orientation.elements.tolist(),
-                    "forecast_rotation" : [det_boxes[t][i].orientation.elements.tolist() for t in range(forecast - 1)],
-                    "rrotation": box.rorientation.elements.tolist(),
-                    "forecast_rrotation" : [det_boxes[t][i].rorientation.elements.tolist() for t in range(forecast - 1)],
                     "velocity": box.velocity[:2].tolist(),
-                    "forecast_velocity" : [det_boxes[t][i].velocity[:2].tolist() for t in range(forecast - 1)],
-                    "rvelocity": box.rvelocity[:2].tolist(),
-                    "forecast_rvelocity" : [det_boxes[t][i].rvelocity[:2].tolist() for t in range(forecast - 1)],
+                    "forecast_boxes" : [box_serialize(box, token, name, attr) for box, token in zip(boxes, tokens)],
                     "detection_name": name,
                     "detection_score": box.score,
                     "attribute_name": attr
@@ -376,7 +442,6 @@ class NuScenesDataset(PointCloudDataset):
                         0
                     ],
                 }
-
                 annos.append(nusc_anno)
 
             if token not in nusc_annos["results"].keys():
@@ -409,7 +474,6 @@ class NuScenesDataset(PointCloudDataset):
                 output_dir,
                 forecast=forecast,
                 tp_pct=tp_pct,
-                reverse=reverse,
                 static_only=static_only,
                 cohort_analysis=cohort_analysis
             )

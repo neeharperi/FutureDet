@@ -8,6 +8,9 @@ DOUBLE_FLIP=False
 TWO_STAGE=False 
 REVERSE=True
 CONSISTENCY=False
+DENSE=False
+MULTI_CENTER=False
+GUIDED_MULTI_CENTER=False
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -60,7 +63,10 @@ model = dict(
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        consistency=CONSISTENCY
+        consistency=CONSISTENCY,
+        dense=DENSE,
+        multi_center=MULTI_CENTER,
+        guided_multi_center=GUIDED_MULTI_CENTER,
     ),
 )
 

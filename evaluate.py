@@ -47,6 +47,7 @@ detection_dataFrame = { "CLASS" : [],
                         "ADE" : [],
                         "FDE" : [],
                         "MR" : [],
+                        "mAP_MR" : [],
 #                        "RADE" : [],
 #                        "RFDE" : [],
 #                        "RMR" : []
@@ -89,10 +90,10 @@ parser.add_argument("--extractBox", action="store_true")
 parser.add_argument("--version", default="v1.0-trainval") #
 parser.add_argument("--split", default="val") #
 parser.add_argument("--modelCheckPoint", default="latest.pth")
-parser.add_argument("--forecast", default=6)
+parser.add_argument("--forecast", default=7)
 parser.add_argument("--tp_pct", default=0.6)
-parser.add_argument("--reverse", action="store_true")
 parser.add_argument("--static_only", action="store_true")
+parser.add_argument("--forecast_mode", default="velocity_forward")
 parser.add_argument("--cohort_analysis", action="store_true")
 
 
@@ -109,8 +110,8 @@ split = args.split
 extractBox = args.extractBox
 modelCheckPoint = args.modelCheckPoint
 forecast = args.forecast
+forecast_mode = args.forecast_mode
 tp_pct = args.tp_pct
-reverse = args.reverse
 static_only = args.static_only
 cohort_analysis = args.cohort_analysis
 
@@ -129,14 +130,14 @@ track_dir = "models/{experiment}/{dataset}_{architecture}_{model}_tracking".form
                                                                                    dataset=dataset)
 print("Evaluating Detection Results for " + modelCheckPoint)
 
-os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint} --forecast {forecast} --tp_pct {tp_pct} {reverse} {static_only} {cohort_analysis} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
+os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --tp_pct {tp_pct} {static_only} {cohort_analysis} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
                                                                                                                                                                                     configPath=configPath, 
                                                                                                                                                                                     extractBox= "--extractBox" if extractBox else "", 
                                                                                                                                                                                     det_dir=det_dir, 
                                                                                                                                                                                     modelCheckPoint=modelCheckPoint,
                                                                                                                                                                                     forecast=forecast,
+                                                                                                                                                                                    forecast_mode=forecast_mode,
                                                                                                                                                                                     tp_pct=tp_pct,
-                                                                                                                                                                                    reverse= "--reverse" if reverse else "",
                                                                                                                                                                                     static_only= "--static_only" if static_only else "",
                                                                                                                                                                                     cohort_analysis= "--cohort_analysis" if cohort_analysis else "",
                                                                                                                                                                                     split=split,
@@ -164,6 +165,8 @@ for classname in detection_dataFrame["CLASS"]:
 
     detection_dataFrame["mAAP"].append(logFile["mean_dist_aaps"][classname])
     detection_dataFrame["mAAR"].append(logFile["mean_dist_aars"][classname])
+
+    detection_dataFrame["mAP_MR"].append(logFile["mean_dist_aps_mr"][classname])
 
 classMetrics = logFile["label_tp_errors"]
 for metric in detection_metrics.keys():

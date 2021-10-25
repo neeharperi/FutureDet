@@ -164,47 +164,21 @@ def _second_det_to_nusc_box(detection):
     scores = detection["scores"].detach().cpu().numpy()
     labels = detection["label_preds"].detach().cpu().numpy()
     
-    if len(box3d[0]) == 9:
-        box3d[:, -1] = -box3d[:, -1] - np.pi / 2
-    else:
-        box3d[:, -2] = -box3d[:, -2] - np.pi / 2
-        box3d[:, -1] = -box3d[:, -1] - np.pi / 2
+    box3d[:, -1] = -box3d[:, -1] - np.pi / 2
 
     box_list = []
     for i in range(box3d.shape[0]):
-        if len(box3d[0]) == 9:
-            quat = Quaternion(axis=[0, 0, 1], radians=box3d[i, -1])
-            velocity = (*box3d[i, 6:8], 0.0)
-            box = Box(
-                center = box3d[i, :3],
-                rcenter = box3d[i, :3],
-                size = box3d[i, 3:6],
-                orientation=quat,
-                rorientation=quat,
-                label=labels[i],
-                score=scores[i],
-                velocity=velocity,
-                rvelocity=velocity,
-            )
-
-        else:
-            quat = Quaternion(axis=[0, 0, 1], radians=box3d[i, -2])
-            rquat = Quaternion(axis=[0, 0, 1], radians=box3d[i, -1])
-            velocity = (*box3d[i, 6:8], 0.0)
-            rvelocity = (*box3d[i, 8:10], 0.0)
-
-            box = Box(
-                center = box3d[i, :3],
-                rcenter = box3d[i, :3],
-                size = box3d[i, 3:6],
-                orientation=quat,
-                rorientation=rquat,
-                label=labels[i],
-                score=scores[i],
-                velocity=velocity,
-                rvelocity=rvelocity,
-            )
-            
+        quat = Quaternion(axis=[0, 0, 1], radians=box3d[i, -1])
+        velocity = (*box3d[i, 6:8], 0.0)
+        box = Box(
+            center = box3d[i, :3],
+            size = box3d[i, 3:6],
+            orientation=quat,
+            label=labels[i],
+            score=scores[i],
+            velocity=velocity,
+        )
+        
         box_list.append(box)
 
     return box_list
@@ -229,13 +203,6 @@ def _lidar_nusc_box_to_global(nusc, boxes, sample_token):
         # Move box to global coord system
         box.rotate(Quaternion(pose_record["rotation"]))
         box.translate(np.array(pose_record["translation"]))
-     
-        # Move box to ego vehicle coord system
-        box.rrotate(Quaternion(cs_record["rotation"]))
-        box.rtranslate(np.array(cs_record["translation"]))
-        # Move box to global coord system
-        box.rrotate(Quaternion(pose_record["rotation"]))
-        box.rtranslate(np.array(pose_record["translation"]))
 
         box_list.append(box)
 
@@ -308,16 +275,6 @@ def get_sample_data(
         box.translate(-np.array(cs_record["translation"]))
         box.rotate(Quaternion(cs_record["rotation"]).inverse)
 
-        box.rvelocity = nusc.box_velocity(box.token)
-
-        # Move box to ego vehicle coord system
-        box.rtranslate(-np.array(pose_record["translation"]))
-        box.rrotate(Quaternion(pose_record["rotation"]).inverse)
-
-        #  Move box to sensor coord system
-        box.rtranslate(-np.array(cs_record["translation"]))
-        box.rrotate(Quaternion(cs_record["rotation"]).inverse)
-    
         box_list.append(box)
 
     return data_path, box_list, cam_intrinsic
@@ -340,7 +297,6 @@ def get_time(nusc, src_token, dst_token):
 def get_annotations(nusc, annotations, ref_boxes, timesteps):
     forecast_annotations = []
     forecast_boxes = []   
-    forecast_timesteps = []
     sample_tokens = [s["token"] for s in nusc.sample]
 
     for annotation, ref_box in zip(annotations, ref_boxes):
@@ -357,15 +313,11 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
         for i in range(timesteps):
 
             box = Box(center = annotation["translation"],
-                      rcenter = pannotation["translation"],
                       size = ref_box.wlh,
                       orientation = Quaternion(annotation["rotation"]),
-                      velocity = nusc.forecast_velocity(annotation["token"]),
-                      rorientation = Quaternion(pannotation["rotation"]),
-                      rvelocity = nusc.forecast_velocity(pannotation["token"]),
+                      velocity = nusc.box_velocity(annotation["token"]),
                       name = annotation["category_name"],
-                      token = annotation["token"],
-                      rtoken = pannotation["token"])
+                      token = annotation["token"])
 
             box.translate(-np.array(pose_record["translation"]))
             box.rotate(Quaternion(pose_record["rotation"]).inverse)
@@ -373,13 +325,6 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
             #  Move box to sensor coord system
             box.translate(-np.array(cs_record["translation"]))
             box.rotate(Quaternion(cs_record["rotation"]).inverse)
-
-            box.rtranslate(-np.array(pose_record["translation"]))
-            box.rrotate(Quaternion(pose_record["rotation"]).inverse)
-
-            #  Move box to sensor coord system
-            box.rtranslate(-np.array(cs_record["translation"]))
-            box.rrotate(Quaternion(cs_record["rotation"]).inverse)
 
             tracklet_box.append(box)
             tracklet_annotation.append(annotation)
@@ -393,19 +338,8 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
             if prev_token != "":
                 pannotation = nusc.get("sample_annotation", prev_token)
         
-        for boxes in window(tracklet_annotation, 2):
-            time = get_time(nusc, boxes[0]["sample_token"], boxes[1]["sample_token"])
-            tracklet_timesteps.append(0.5 if time == 0 else time)
-        
-        for i in range(1, len(tracklet_box)):
-            center = tracklet_box[i - 1].center + tracklet_box[i - 1].velocity * tracklet_timesteps[i]
-
-            if np.array_equal(tracklet_box[i].center, tracklet_box[i - 1].center) and np.linalg.norm(tracklet_box[i - 1].center) != 0:
-                tracklet_box[i].center = center
-
         forecast_boxes.append(tracklet_box)
         forecast_annotations.append(tracklet_annotation)
-        forecast_timesteps.append(tracklet_timesteps)
 
     return forecast_boxes, forecast_annotations
 
@@ -525,18 +459,18 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
 
             mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts']) > 0 for anno in annotations], dtype=bool).reshape(-1)
             locs = [np.array([b.center for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
-            rlocs = [np.array([b.rcenter for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
+            rlocs = [np.array([b.center for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
 
             dims = [np.array([b.wlh for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
             # rots = np.array([b.orientation.yaw_pitch_roll[0] for b in ref_boxes]).reshape(-1, 1)
             velocity = [np.array([b.velocity for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
-            rvelocity = [np.array([b.rvelocity for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
+            rvelocity = [np.array([b.velocity for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
             rots = [np.array([quaternion_yaw(b.orientation) for b in boxes]).reshape(-1, 1) for boxes in forecast_boxes]
-            rrots = [np.array([quaternion_yaw(b.rorientation) for b in boxes]).reshape(-1, 1) for boxes in forecast_boxes]
+            rrots = [np.array([quaternion_yaw(b.orientation) for b in boxes]).reshape(-1, 1) for boxes in forecast_boxes]
 
             names = [np.array([b.name for b in boxes]) for boxes in forecast_boxes]
             tokens = [np.array([b.token for b in boxes]) for boxes in forecast_boxes]
-            rtokens = [np.array([b.rtoken for b in boxes]) for boxes in forecast_boxes]
+            rtokens = [np.array([b.token for b in boxes]) for boxes in forecast_boxes]
 
             gt_boxes = [np.concatenate([locs[i], dims[i], velocity[i][:, :2], rvelocity[i][:, :2], -rots[i] - np.pi / 2, -rrots[i] - np.pi / 2], axis=1) for i in range(len(annotations))]
             # gt_boxes = np.concatenate([locs, dims, rots], axis=1)
@@ -666,7 +600,7 @@ def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainv
             pickle.dump(val_nusc_infos, f)
 
 
-def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, reverse, static_only, cohort_analysis):
+def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, static_only, cohort_analysis):
     # nusc = NuScenes(version=version, dataroot=str(root_path), verbose=True)
     cfg = config_factory(eval_version)
 
@@ -679,7 +613,6 @@ def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_p
         verbose=True,
         forecast=forecast,
         tp_pct=tp_pct,
-        reverse=reverse,
         static_only=static_only,
         cohort_analysis=cohort_analysis
     )

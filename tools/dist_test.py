@@ -79,8 +79,8 @@ def parse_args():
     parser.add_argument("--testset", action="store_true")
     parser.add_argument("--extractBox", action="store_true")
     parser.add_argument("--forecast", type=int, default=6)
+    parser.add_argument("--forecast_mode", default="velocity_forward")
     parser.add_argument("--tp_pct", type=float, default=0.6)
-    parser.add_argument("--reverse", action="store_true")
     parser.add_argument("--static_only", action="store_true")
     parser.add_argument("--cohort_analysis", action="store_true")
     parser.add_argument("--split", default="val")
@@ -246,7 +246,7 @@ def main():
         return
     
     predictions = load_pred(args.work_dir)
-    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, tp_pct=args.tp_pct, root=args.root, reverse=args.reverse, static_only=args.static_only, cohort_analysis=args.cohort_analysis, split=args.split, version=args.version)
+    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, split=args.split, version=args.version)
 
     if result_dict is not None:
         for k, v in result_dict["results"].items():

@@ -217,6 +217,9 @@ class CenterHead(nn.Module):
         two_stage=False,
         reverse=False,
         consistency=False,
+        dense=False,
+        multi_center=False,
+        guided_multi_center=False
 
     ):
         super(CenterHead, self).__init__()
@@ -224,6 +227,9 @@ class CenterHead(nn.Module):
         self.two_stage = two_stage 
         self.reverse = reverse
         self.consistency = consistency
+        self.dense=dense
+        self.multi_center=multi_center
+        self.guided_multi_center=guided_multi_center
 
         num_classes = [len(t["class_names"]) for t in tasks]
         self.class_names = [t["class_names"] for t in tasks]
@@ -286,7 +292,10 @@ class CenterHead(nn.Module):
         if dcn_head:
             print("Use Deformable Convolution in the CenterHead!")
 
-        for num_cls in num_classes:
+        if self.dense:
+            self.num_classes = self.timesteps * [1, 1, 2, 1, 1]
+
+        for num_cls in self.num_classes:
             heads = copy.deepcopy(common_heads)
 
             for head in heads.keys():
@@ -631,15 +640,15 @@ class CenterHead(nn.Module):
             else:
                 boxes_for_nms = box_preds[:, [0, 1, 2, 3, 4, 5, -2]]
 
-            if test_cfg.get('circular_nms', False):
-                centers = boxes_for_nms[:, [0, 1]] 
-                boxes = torch.cat([centers, scores.view(-1, 1)], dim=1)
-                selected = _circle_nms(boxes, min_radius=test_cfg.min_radius[task_id], post_max_size=test_cfg.nms.nms_post_max_size)  
-            else:
-                selected = box_torch_ops.rotate_nms_pcdet(boxes_for_nms.float(), scores.float(), 
-                                    thresh=test_cfg.nms.nms_iou_threshold,
-                                    pre_maxsize=test_cfg.nms.nms_pre_max_size,
-                                    post_max_size=test_cfg.nms.nms_post_max_size)
+            #if test_cfg.get('circular_nms', False):
+            centers = boxes_for_nms[:, [0, 1]] 
+            boxes = torch.cat([centers, scores.view(-1, 1)], dim=1)
+            selected = _circle_nms(boxes, min_radius=0.5, post_max_size=test_cfg.nms.nms_post_max_size)  
+            #else:
+            #    selected = box_torch_ops.rotate_nms_pcdet(boxes_for_nms.float(), scores.float(), 
+            #                        thresh=test_cfg.nms.nms_iou_threshold,
+            #                        pre_maxsize=test_cfg.nms.nms_pre_max_size,
+            #                        post_max_size=test_cfg.nms.nms_post_max_size)
 
             selected_boxes = box_preds[selected]
             selected_scores = scores[selected]

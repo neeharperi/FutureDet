@@ -2,11 +2,12 @@ import itertools
 import logging
 
 from det3d.utils.config_tool import get_downsample_factor
+
 timesteps = 7
 DOUBLE_FLIP=False
 TWO_STAGE=False 
-REVERSE=False
-CONSISTENCY=False
+REVERSE=True
+CONSISTENCY=True
 DENSE=False
 MULTI_CENTER=False
 GUIDED_MULTI_CENTER=False
@@ -62,7 +63,7 @@ model = dict(
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        consistency = CONSISTENCY,
+        consistency=CONSISTENCY,
         dense=DENSE,
         multi_center=MULTI_CENTER,
         guided_multi_center=GUIDED_MULTI_CENTER,
