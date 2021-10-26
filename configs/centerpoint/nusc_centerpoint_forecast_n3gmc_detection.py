@@ -2,23 +2,18 @@ import itertools
 import logging
 
 from det3d.utils.config_tool import get_downsample_factor
-
 timesteps = 7
 DOUBLE_FLIP=False
 TWO_STAGE=False 
-REVERSE=True
-CONSISTENCY=True
+REVERSE=False
+CONSISTENCY=False
 DENSE=False
 MULTI_CENTER=False
-GUIDED_MULTI_CENTER=False
+GUIDED_MULTI_CENTER=True
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
-    dict(num_class=2, class_names=["truck", "construction_vehicle"]),
-    dict(num_class=2, class_names=["bus", "trailer"]),
-    dict(num_class=1, class_names=["barrier"]),
-    dict(num_class=2, class_names=["motorcycle", "bicycle"]),
-    dict(num_class=2, class_names=["pedestrian", "traffic_cone"]),
+    dict(num_class=1, class_names=["pedestrian"]),
 ]
 
 class_names = list(itertools.chain(*[t["class_names"] for t in tasks]))
@@ -63,7 +58,7 @@ model = dict(
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        consistency=CONSISTENCY,
+        consistency = CONSISTENCY,
         dense=DENSE,
         multi_center=MULTI_CENTER,
         guided_multi_center=GUIDED_MULTI_CENTER,
@@ -102,7 +97,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 10
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
 
 db_sampler = dict(
     type="GT-AUG",
@@ -110,28 +105,12 @@ db_sampler = dict(
     db_info_path= data_root + "/dbinfos_train_10sweeps_withvelo.pkl",
     sample_groups=[
         dict(car=2),
-        dict(truck=3),
-        dict(construction_vehicle=7),
-        dict(bus=4),
-        dict(trailer=6),
-        dict(barrier=2),
-        dict(motorcycle=6),
-        dict(bicycle=6),
         dict(pedestrian=2),
-        dict(traffic_cone=2),
     ],
     db_prep_steps=[
         dict(
             filter_by_min_num_points=dict(
                 car=5,
-                truck=5,
-                bus=5,
-                trailer=5,
-                construction_vehicle=5,
-                traffic_cone=5,
-                barrier=5,
-                motorcycle=5,
-                bicycle=5,
                 pedestrian=5,
             )
         ),

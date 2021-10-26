@@ -1,6 +1,9 @@
 #!/bin/bash
 source ~/.bashrc
 
+export CUDA_HOME=/usr/local/cuda-10.1
+export CUDA_ROOT=/usr/local/cuda-10.1
+
 cd ~/Workspace/CenterForecast/det3d/ops/dcn
 rm -rf build
 rm deform_conv_cuda.cpython-37m-x86_64-linux-gnu.so
@@ -10,6 +13,9 @@ cd ~/Workspace/CenterForecast/det3d/ops/iou3d_nms
 rm -rf build
 rm iou3d_nms_cuda.cpython-37m-x86_64-linux-gnu.so
 python setup.py build_ext --inplace
+
+export CUDA_HOME=/usr/local/cuda
+export CUDA_ROOT=/usr/local/cuda
 
 cd ~/Workspace/Core/spconv
 rm -rf build
@@ -25,3 +31,4 @@ export CUDA_ROOT=/usr/local/cuda-10.1
 
 cd ~/Workspace/Core/apex
 pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+

@@ -145,42 +145,42 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
 
         ret_boxes = match_boxes(ret_boxes)
     
-    trajectory_boxes = []
-    for j in range(len(ret_boxes[0])):
-        boxes = []      
+        trajectory_boxes = []
+        for j in range(len(ret_boxes[0])):
+            boxes = []      
 
-        for i in range(1, forecast):
-            boxes.append(ret_boxes[i][j])
+            for i in range(1, forecast):
+                boxes.append(ret_boxes[i][j])
 
-        trajectory_boxes.append(boxes)
-    
-    time = []
-    for src, dst in window(ret_tokens, 2):
-        time.append(get_time(nusc, src, dst))
+            trajectory_boxes.append(boxes)
+        
+        time = []
+        for src, dst in window(ret_tokens, 2):
+            time.append(get_time(nusc, src, dst))
 
-    if forecast_mode == "velocity_forward":
-        ret_boxes = []
-        for trajectory_box in trajectory_boxes:
-            forecast_boxes = [trajectory_box[0]]
-            for i in range(forecast - 1):
-                new_box = deepcopy(forecast_boxes[-1])
-                new_box.center = new_box.center + time[i] * forecast_boxes[-1].velocity
+        if forecast_mode == "velocity_forward":
+            ret_boxes = []
+            for trajectory_box in trajectory_boxes:
+                forecast_boxes = [trajectory_box[0]]
+                for i in range(forecast - 1):
+                    new_box = deepcopy(forecast_boxes[-1])
+                    new_box.center = new_box.center + time[i] * forecast_boxes[-1].velocity
 
-                forecast_boxes.append(new_box)
+                    forecast_boxes.append(new_box)
 
-            ret_boxes.append(forecast_boxes)
+                ret_boxes.append(forecast_boxes)
 
-    if forecast_mode == "velocity_reverse":
-        ret_boxes = []
-        for trajectory_box in trajectory_boxes:
-            forecast_boxes = [trajectory_box[0]]
-            for i in range(forecast - 1):
-                new_box = deepcopy(forecast_boxes[-1])
-                new_box.center = new_box.center - time[i] * forecast_boxes[-1].velocity
+        if forecast_mode == "velocity_reverse":
+            ret_boxes = []
+            for trajectory_box in trajectory_boxes:
+                forecast_boxes = [trajectory_box[0]]
+                for i in range(forecast - 1):
+                    new_box = deepcopy(forecast_boxes[-1])
+                    new_box.center = new_box.center - time[i] * forecast_boxes[-1].velocity
 
-                forecast_boxes.append(new_box)
+                    forecast_boxes.append(new_box)
 
-            ret_boxes.append(forecast_boxes[::-1])
+                ret_boxes.append(forecast_boxes[::-1])
 
     forecast_boxes = []
     for boxes in ret_boxes:
