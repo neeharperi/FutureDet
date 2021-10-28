@@ -289,7 +289,7 @@ class CenterHead(nn.Module):
         )
 
         if self.guided_multi_center:
-            self.alpha = nn.Parameter(torch.Tensor([0.2]))
+            self.alpha = nn.Parameter(0.2 * torch.ones(1), requires_grad = True)
         
         self.tasks = nn.ModuleList()
         print("Use HM Bias: ", init_bias)

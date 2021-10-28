@@ -302,7 +302,11 @@ class NuScenesDataset(PointCloudDataset):
             gt_names = gt_names[mask]
             gt_boxes = gt_boxes[mask]
             # det_range = np.array([cls_range_map[n] for n in gt_names_mapped])
-            det_range = np.array([cls_range_map[n] for n in gt_names])
+            try:
+                det_range = np.array([cls_range_map[n] for n in gt_names])
+            except:
+                det_range = np.array([50 for n in gt_names])
+
             det_range = det_range[..., np.newaxis] @ np.array([[-1, -1, 1, 1]])
             mask = (gt_boxes[:, :2] >= det_range[:, :2]).all(1)
             mask &= (gt_boxes[:, :2] <= det_range[:, 2:]).all(1)

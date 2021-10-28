@@ -20,6 +20,8 @@ try:
 except:
     print("nuScenes devkit not Found!")
 
+import pdb 
+
 general_to_detection = {
     "human.pedestrian.adult": "pedestrian",
     "human.pedestrian.child": "pedestrian",
@@ -30,53 +32,53 @@ general_to_detection = {
     "human.pedestrian.construction_worker": "pedestrian",
     "animal": "ignore",
     "vehicle.car": "car",
-    "vehicle.motorcycle": "motorcycle",
-    "vehicle.bicycle": "bicycle",
-    "vehicle.bus.bendy": "bus",
-    "vehicle.bus.rigid": "bus",
-    "vehicle.truck": "truck",
-    "vehicle.construction": "construction_vehicle",
+    "vehicle.motorcycle": "ignore",
+    "vehicle.bicycle": "ignore",
+    "vehicle.bus.bendy": "ignore",
+    "vehicle.bus.rigid": "ignore",
+    "vehicle.truck": "ignore",
+    "vehicle.construction": "ignore",
     "vehicle.emergency.ambulance": "ignore",
     "vehicle.emergency.police": "ignore",
-    "vehicle.trailer": "trailer",
-    "movable_object.barrier": "barrier",
-    "movable_object.trafficcone": "traffic_cone",
+    "vehicle.trailer": "ignore",
+    "movable_object.barrier": "ignore",
+    "movable_object.trafficcone": "ignore",
     "movable_object.pushable_pullable": "ignore",
     "movable_object.debris": "ignore",
     "static_object.bicycle_rack": "ignore",
 }
 
 cls_attr_dist = {
-    "barrier": {
-        "cycle.with_rider": 0,
-        "cycle.without_rider": 0,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 0,
-        "vehicle.parked": 0,
-        "vehicle.stopped": 0,
-    },
-    "bicycle": {
-        "cycle.with_rider": 2791,
-        "cycle.without_rider": 8946,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 0,
-        "vehicle.parked": 0,
-        "vehicle.stopped": 0,
-    },
-    "bus": {
-        "cycle.with_rider": 0,
-        "cycle.without_rider": 0,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 9092,
-        "vehicle.parked": 3294,
-        "vehicle.stopped": 3881,
-    },
+    # "barrier": {
+    #     "cycle.with_rider": 0,
+    #     "cycle.without_rider": 0,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 0,
+    #     "vehicle.parked": 0,
+    #     "vehicle.stopped": 0,
+    # },
+    # "bicycle": {
+    #     "cycle.with_rider": 2791,
+    #     "cycle.without_rider": 8946,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 0,
+    #     "vehicle.parked": 0,
+    #     "vehicle.stopped": 0,
+    # },
+    # "bus": {
+    #     "cycle.with_rider": 0,
+    #     "cycle.without_rider": 0,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 9092,
+    #     "vehicle.parked": 3294,
+    #     "vehicle.stopped": 3881,
+    # },
     "car": {
         "cycle.with_rider": 0,
         "cycle.without_rider": 0,
@@ -87,36 +89,36 @@ cls_attr_dist = {
         "vehicle.parked": 330133,
         "vehicle.stopped": 46898,
     },
-    "construction_vehicle": {
-        "cycle.with_rider": 0,
-        "cycle.without_rider": 0,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 882,
-        "vehicle.parked": 11549,
-        "vehicle.stopped": 2102,
-    },
-    "ignore": {
-        "cycle.with_rider": 307,
-        "cycle.without_rider": 73,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 165,
-        "vehicle.parked": 400,
-        "vehicle.stopped": 102,
-    },
-    "motorcycle": {
-        "cycle.with_rider": 4233,
-        "cycle.without_rider": 8326,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 0,
-        "vehicle.parked": 0,
-        "vehicle.stopped": 0,
-    },
+    # "construction_vehicle": {
+    #     "cycle.with_rider": 0,
+    #     "cycle.without_rider": 0,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 882,
+    #     "vehicle.parked": 11549,
+    #     "vehicle.stopped": 2102,
+    # },
+    # "ignore": {
+    #     "cycle.with_rider": 307,
+    #     "cycle.without_rider": 73,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 165,
+    #     "vehicle.parked": 400,
+    #     "vehicle.stopped": 102,
+    # },
+    # "motorcycle": {
+    #     "cycle.with_rider": 4233,
+    #     "cycle.without_rider": 8326,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 0,
+    #     "vehicle.parked": 0,
+    #     "vehicle.stopped": 0,
+    # },
     "pedestrian": {
         "cycle.with_rider": 0,
         "cycle.without_rider": 0,
@@ -127,36 +129,36 @@ cls_attr_dist = {
         "vehicle.parked": 0,
         "vehicle.stopped": 0,
     },
-    "traffic_cone": {
-        "cycle.with_rider": 0,
-        "cycle.without_rider": 0,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 0,
-        "vehicle.parked": 0,
-        "vehicle.stopped": 0,
-    },
-    "trailer": {
-        "cycle.with_rider": 0,
-        "cycle.without_rider": 0,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 3421,
-        "vehicle.parked": 19224,
-        "vehicle.stopped": 1895,
-    },
-    "truck": {
-        "cycle.with_rider": 0,
-        "cycle.without_rider": 0,
-        "pedestrian.moving": 0,
-        "pedestrian.sitting_lying_down": 0,
-        "pedestrian.standing": 0,
-        "vehicle.moving": 21339,
-        "vehicle.parked": 55626,
-        "vehicle.stopped": 11097,
-    },
+    # "traffic_cone": {
+    #     "cycle.with_rider": 0,
+    #     "cycle.without_rider": 0,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 0,
+    #     "vehicle.parked": 0,
+    #     "vehicle.stopped": 0,
+    # },
+    # "trailer": {
+    #     "cycle.with_rider": 0,
+    #     "cycle.without_rider": 0,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 3421,
+    #     "vehicle.parked": 19224,
+    #     "vehicle.stopped": 1895,
+    # },
+    # "truck": {
+    #     "cycle.with_rider": 0,
+    #     "cycle.without_rider": 0,
+    #     "pedestrian.moving": 0,
+    #     "pedestrian.sitting_lying_down": 0,
+    #     "pedestrian.standing": 0,
+    #     "vehicle.moving": 21339,
+    #     "vehicle.parked": 55626,
+    #     "vehicle.stopped": 11097,
+    # },
 }
 
 def _second_det_to_nusc_box(detection):
@@ -294,14 +296,45 @@ def get_time(nusc, src_token, dst_token):
 
     return time_diff 
 
+def center_distance(gt_box, pred_box) -> float:
+    """
+    L2 distance between the box centers (xy only).
+    :param gt_box: GT annotation sample.
+    :param pred_box: Predicted sample.
+    :return: L2 distance.
+    """
+    return np.linalg.norm(np.array(pred_box[:2]) - np.array(gt_box[:2]))
+
+
+def displacement(nusc, velocity, time):
+    disp = np.zeros(2)
+    for t in time:
+        disp += t * np.array(velocity)
+
+    return disp
+
+def trajectory(nusc, box, time, thresh : float = 0.5) -> float:
+    target = box[-1].center
+    static_forecast = box[0].center
+    linear_forecast = box[0].center + np.array(list(displacement(nusc, box[0].velocity[:2], time)) + [0])
+
+    if center_distance(target, static_forecast) < thresh:
+        return "static"
+    elif center_distance(target, linear_forecast) < thresh:
+        return "linear"
+    else:
+        return "nonlinear"
+
 def get_annotations(nusc, annotations, ref_boxes, timesteps):
     forecast_annotations = []
     forecast_boxes = []   
+    forecast_trajectory = []
     sample_tokens = [s["token"] for s in nusc.sample]
 
     for annotation, ref_box in zip(annotations, ref_boxes):
         tracklet_box = []
         tracklet_annotation = []
+        tracklet_trajectory = []
         tracklet_timesteps = [0]
 
         token = nusc.sample[sample_tokens.index(annotation["sample_token"])]["data"]["LIDAR_TOP"]
@@ -338,10 +371,15 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
             if prev_token != "":
                 pannotation = nusc.get("sample_annotation", prev_token)
         
+        tokens = [b["sample_token"] for b in tracklet_annotation]
+        time = [get_time(nusc, src, dst) for src, dst in window(tokens, 2)]
+        tracklet_trajectory = trajectory(nusc, tracklet_box, time)
+
         forecast_boxes.append(tracklet_box)
         forecast_annotations.append(tracklet_annotation)
+        forecast_trajectory.append(timesteps*[tracklet_trajectory])
 
-    return forecast_boxes, forecast_annotations
+    return forecast_boxes, forecast_annotations, forecast_trajectory
 
 def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10, filter_zero=True, timesteps=5):
     from nuscenes.utils.geometry_utils import transform_matrix
@@ -455,7 +493,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
 
         if not test:
             annotations = [nusc.get("sample_annotation", token) for token in sample["anns"]]
-            forecast_boxes, forecast_annotations = get_annotations(nusc, annotations, ref_boxes, timesteps)
+            forecast_boxes, forecast_annotations, forecast_trajectory = get_annotations(nusc, annotations, ref_boxes, timesteps)
 
             mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts']) > 0 for anno in annotations], dtype=bool).reshape(-1)
             locs = [np.array([b.center for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
@@ -472,6 +510,8 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
             tokens = [np.array([b.token for b in boxes]) for boxes in forecast_boxes]
             rtokens = [np.array([b.token for b in boxes]) for boxes in forecast_boxes]
 
+            trajectory = [np.array([b for b in boxes]) for boxes in forecast_trajectory]
+
             gt_boxes = [np.concatenate([locs[i], dims[i], velocity[i][:, :2], rvelocity[i][:, :2], -rots[i] - np.pi / 2, -rrots[i] - np.pi / 2], axis=1) for i in range(len(annotations))]
             # gt_boxes = np.concatenate([locs, dims, rots], axis=1)
             assert len(annotations) == len(gt_boxes) == len(velocity) == len(rvelocity)
@@ -484,6 +524,8 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
                     info["gt_names"] = np.array([[general_to_detection[n] for n in name] for name in names])
                     info["gt_boxes_token"] = np.array(tokens)
                     info["gt_boxes_rtoken"] = np.array(rtokens)
+                    info["gt_trajectory"] = np.array(trajectory)
+
                 else:
                     info["gt_boxes"] = np.array(gt_boxes)[mask, :]
                     info["gt_boxes_velocity"] = np.array(velocity)[mask, :]
@@ -491,6 +533,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
                     info["gt_names"] = np.array([[general_to_detection[n] for n in name] for name in names])[mask]
                     info["gt_boxes_token"] = np.array(tokens)[mask]
                     info["gt_boxes_rtoken"] = np.array(rtokens)[mask]
+                    info["gt_trajectory"] = np.array(trajectory)[mask]
 
             else:
                 mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts']) >0 for anno in annotations], dtype=bool).reshape(-1)
@@ -504,13 +547,16 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
                 names = np.array([b.name for b in ref_boxes])
                 tokens = np.array([b.token for b in ref_boxes])
                 gt_boxes = np.concatenate([locs, dims, velocity[:, :2], rvelocity[:, :2], -rots - np.pi / 2], axis=1)
-                    
+                trajectory = np.array(["static" for b in ref_boxes])
+
                 info["gt_boxes"] = gt_boxes
                 info["gt_boxes_velocity"] = velocity
                 info["gt_boxes_rvelocity"] = rvelocity
                 info["gt_names"] = np.array([general_to_detection[name] for name in names])
                 info["gt_boxes_token"] = tokens
                 info["gt_boxes_rtoken"] = tokens
+                info["gt_boxes_rtoken"] = tokens
+                info["gt_trajectory"] = trajectory
 
         if sample["scene_token"] in train_scenes:
             train_nusc_infos.append(info)
