@@ -298,7 +298,7 @@ class CenterHead(nn.Module):
             print("Use Deformable Convolution in the CenterHead!")
 
         if self.dense or self.multi_center or self.guided_multi_center:
-            self.num_classes = self.timesteps * [1, 1]
+            self.num_classes = (self.timesteps  // 2) * [1, 1]
 
         for num_cls in self.num_classes:
             heads = copy.deepcopy(common_heads)
@@ -359,15 +359,17 @@ class CenterHead(nn.Module):
             hm = self.num_classes[task_id]
             preds_dict['hm'] = self._sigmoid(preds_dict['hm'])
 
+            #HM Loss
             if self.two_stage:
                 hm_loss = torch.tensor(0).cuda()
             elif self.reverse:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][-1][task_id], example['ind'][-1][task_id], example['mask'][-1][task_id], example['cat'][-1][task_id])
             elif self.dense or self.multi_center or self.guided_multi_center:
-                hm_loss = self.crit(preds_dict['hm'], example['hm'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], example['mask'][task_id // 2][task_id % 2], example['cat'][task_id // 2][task_id % 2])
+                hm_loss = self.crit(preds_dict['hm'], example['hm'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['cat'][(self.timesteps // 2) * (task_id // 2)][task_id % 2])
             else:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][0][task_id], example['ind'][0][task_id], example['mask'][0][task_id], example['cat'][0][task_id])
 
+            #Generate Target Boxes
             if self.reverse:
                 target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)][::-1]
             else:
@@ -393,7 +395,7 @@ class CenterHead(nn.Module):
                             preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
                                             preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::], preds_dict['rrot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
                     
-                elif 'vel' in preds_dict:
+                elif 'vel' in preds_dict and 'rot' in preds_dict:
                     if self.consistency:
                         preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
                                                             preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
@@ -438,11 +440,11 @@ class CenterHead(nn.Module):
 
             else:
                 if self.dense:
-                    box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][i][task_id % 2], example['ind'][i][task_id % 2], target_box[i]) for i in range(self.timesteps)]
+                    box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[i]) for i in range(self.timesteps)]
 
                 elif self.multi_center or self.guided_multi_center:
-                    box_loss = [self.crit_reg(preds_dict['anno_box'][0], example['mask'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], target_box[task_id // 2]),
-                               self.crit_reg(preds_dict['anno_box'][1], example['mask'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], target_box[0])]
+                    box_loss = [self.crit_reg(preds_dict['anno_box'][0], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[(self.timesteps // 2) * (task_id // 2)]),
+                               self.crit_reg(preds_dict['anno_box'][1], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[0])]
                 
                 else:
                     box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
@@ -451,14 +453,16 @@ class CenterHead(nn.Module):
                     consistency_loss = [self.crit_forecast(preds_dict['anno_box'][i - 1], preds_dict['anno_box'][i], target_box[i - 1], target_box[i], example['mask'][0][task_id], example['ind'][0][task_id], reverse=self.reverse).sum() for i in range(1, self.timesteps)]
             
             loc_loss = []
-            for i in range(self.timesteps):
-                if self.two_stage:
+            
+            if self.two_stage:
+                for i in range(self.timesteps):
                     loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights_two_stage_forecast)).sum())
+            else:
+                if self.multi_center or self.guided_multi_center:
+                    loc_loss.append((box_loss[0] * box_loss[0].new_tensor(self.code_weights)).sum()) 
+                    loc_loss.append((box_loss[1] * box_loss[1].new_tensor(self.code_weights_multi_center_forecast)).sum())
                 else:
-                    if self.multi_center or self.guided_multi_center:
-                        loc_loss.append((box_loss[0] * box_loss[0].new_tensor(self.code_weights)).sum()) 
-                        loc_loss.append((box_loss[1] * box_loss[1].new_tensor(self.code_weights_multi_center_forecast)).sum())
-                    else:
+                    for i in range(self.timesteps):
                         loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights)).sum() if i == 0 else (box_loss[i] * box_loss[i].new_tensor(self.code_weights_forecast)).sum())
             
 
@@ -469,10 +473,10 @@ class CenterHead(nn.Module):
                 loss = hm_loss + self.weight * sum(loc_loss)
 
             if self.dense:
-                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(sum([example['mask'][i][task_id % 2].float() for i in range(self.timesteps)])))})
+                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2].float()))})
 
             elif self.multi_center or self.guided_multi_center:
-                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(2)], 'num_positive': sum(sum(sum([example['mask'][i][task_id % 2].float() for i in range(self.timesteps)])))})
+                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(2)], 'num_positive': sum(sum(example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2].float()))})
 
             else:
                 ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(sum([example['mask'][i][task_id].float() for i in range(self.timesteps)])))})

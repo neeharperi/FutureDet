@@ -27,5 +27,4 @@ Shapely
 tqdm
 pyyaml
 requests
-nuscenes-devkit==1.0.5
 pynvml
