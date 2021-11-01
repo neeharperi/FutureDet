@@ -11,11 +11,11 @@ import pynvml
 import sys
 
 sys.path.append('/home/ubuntu/Workspace/CenterForecast')
-sys.path.append('/home/ubuntu/Workspace/Core/nuscenes-forecast/python-sdk')
+import sys; sys.path.append('/home/ubuntu/Workspace/Core/nuscenes-forecast/python-sdk'); import nuscenes.eval.detection.evaluate
 
 
 from nuscenes.eval.detection.constants import getDetectionNames
-from nuscenes.eval.tracking.constants import TRACKING_NAMES
+#from nuscenes.eval.tracking.constants import TRACKING_NAMES
 from nuscenes.nuscenes import NuScenes
 
 os.environ['MKL_THREADING_LAYER'] = 'GNU'

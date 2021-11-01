@@ -69,8 +69,12 @@ def get_token(scene_data, sample_data, sample_data_tokens, src_data_token, offse
 
 
 def box_center(boxes):
-    center_box = np.array([box.center.tolist() + box.wlh.tolist() for box in boxes]) 
+    center_box = np.array([box.center.tolist() for box in boxes]) 
     return center_box
+
+def box_wlh(boxes):
+    wlh_box = np.array([box.wlh.tolist() for box in boxes]) 
+    return wlh_box
 
 def distance_matrix(A, B, squared=False):
     M = A.shape[0]
@@ -103,6 +107,19 @@ def match_boxes(ret_boxes):
     
     return match_boxes
 
+def match_pointer(forecast, pointer):
+    box_pointer_wlh = [box_wlh(boxes) for boxes in pointer]
+    box_forecast_wlh = [box_wlh(boxes) for boxes in forecast]
+    match_boxes, idx = [], []
+
+    for pbox, fbox in zip(box_pointer_wlh, box_forecast_wlh):
+        idx.append(np.argmin(distance_matrix(fbox, pbox), axis=0))
+    
+    for box, match in zip(forecast, idx):
+        match_boxes.append(np.array(box)[match])
+
+    return match_boxes
+
 def box_serialize(box, token, name, attr):
     ret = {"sample_token": token,
             "translation": box.center.tolist(),
@@ -121,71 +138,159 @@ def box_serialize(box, token, name, attr):
     return ret 
 
 def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode):
-    ret_boxes, ret_tokens = [], []
-    
-    det = deepcopy(det_forecast[0])
-    boxes = _second_det_to_nusc_box(det)
-    #boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
+    if "velocity" in forecast_mode:
+        ret_boxes, ret_tokens = [], []
+        det = deepcopy(det_forecast[0])
+        boxes = _second_det_to_nusc_box(det)
+        #boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
 
-    ret_boxes.append(boxes)
-    ret_tokens.append(det["metadata"]["token"])
+        ret_boxes.append(boxes)
+        ret_tokens.append(det["metadata"]["token"])
 
-    if forecast > 0:
-        for t in range(1, forecast):
-            
-            if t > len(det_forecast) - 1:
-                det = deepcopy(det_forecast[-1])
-            else:
-                det = deepcopy(det_forecast[t])
+        if forecast > 0:
+            for t in range(1, forecast):
                 
-            boxes = _second_det_to_nusc_box(det)
-            src_token, dst_token = ret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, ret_tokens[-1], 1)
-            
-            ret_boxes.append(boxes), ret_tokens.append(dst_token)
+                if t > len(det_forecast) - 1:
+                    det = deepcopy(det_forecast[-1])
+                else:
+                    det = deepcopy(det_forecast[t])
+                    
+                boxes = _second_det_to_nusc_box(det)
+                src_token, dst_token = ret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, ret_tokens[-1], 1)
+                
+                ret_boxes.append(boxes), ret_tokens.append(dst_token)
 
-        ret_boxes = match_boxes(ret_boxes)
-    
-        trajectory_boxes = []
-        for j in range(len(ret_boxes[0])):
-            boxes = []      
-
-            for i in range(1, forecast):
-                boxes.append(ret_boxes[i][j])
-
-            trajectory_boxes.append(boxes)
+            ret_boxes = match_boxes(ret_boxes)
         
-        time = []
-        for src, dst in window(ret_tokens, 2):
-            time.append(get_time(nusc, src, dst))
+            trajectory_boxes = []
+            for j in range(len(ret_boxes[0])):
+                boxes = []      
 
-        if forecast_mode == "velocity_forward":
-            ret_boxes = []
-            for trajectory_box in trajectory_boxes:
-                forecast_boxes = [trajectory_box[0]]
-                for i in range(forecast - 1):
-                    new_box = deepcopy(forecast_boxes[-1])
-                    new_box.center = new_box.center + time[i] * forecast_boxes[-1].velocity
+                for i in range(1, forecast):
+                    boxes.append(ret_boxes[i][j])
 
-                    forecast_boxes.append(new_box)
+                trajectory_boxes.append(boxes)
+            
+            time = []
+            for src, dst in window(ret_tokens, 2):
+                time.append(get_time(nusc, src, dst))
 
-                ret_boxes.append(forecast_boxes)
+            if forecast_mode == "velocity_forward":
+                ret_boxes = []
+                for trajectory_box in trajectory_boxes:
+                    forecast_boxes = [trajectory_box[0]]
+                    for i in range(forecast - 1):
+                        new_box = deepcopy(forecast_boxes[-1])
+                        new_box.center = new_box.center + time[i] * forecast_boxes[-1].velocity
 
-        if forecast_mode == "velocity_reverse":
-            ret_boxes = []
-            for trajectory_box in trajectory_boxes:
-                forecast_boxes = [trajectory_box[0]]
-                for i in range(forecast - 1):
-                    new_box = deepcopy(forecast_boxes[-1])
-                    new_box.center = new_box.center - time[i] * forecast_boxes[-1].velocity
+                        forecast_boxes.append(new_box)
 
-                    forecast_boxes.append(new_box)
+                    ret_boxes.append(forecast_boxes)
 
-                ret_boxes.append(forecast_boxes[::-1])
+            if forecast_mode == "velocity_reverse":
+                ret_boxes = []
+                for trajectory_box in trajectory_boxes:
+                    forecast_boxes = [trajectory_box[0]]
+                    for i in range(forecast - 1):
+                        new_box = deepcopy(forecast_boxes[-1])
+                        new_box.center = new_box.center - time[i] * forecast_boxes[-1].velocity
 
-    forecast_boxes = []
-    for boxes in ret_boxes:
-        boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"]) 
-        forecast_boxes.append(boxes)
+                        forecast_boxes.append(new_box)
+
+                    ret_boxes.append(forecast_boxes[::-1])
+
+            if forecast_mode == "velocity_dense_forward":
+                ret_boxes = []
+                for trajectory_box in trajectory_boxes:
+                    if trajectory_box[0].label not in [0, 1]:
+                        continue
+
+                    forecast_boxes = [trajectory_box[0]]
+                    forecast_boxes[0].label = forecast_boxes[0].label % 2
+                    for i in range(forecast - 1):
+                        new_box = deepcopy(forecast_boxes[-1])
+                        new_box.center = new_box.center + time[i] * forecast_boxes[-1].velocity
+
+                        forecast_boxes.append(new_box)
+
+                    ret_boxes.append(forecast_boxes)
+
+            if forecast_mode == "velocity_dense_center":
+                ret_boxes = []
+                for trajectory_box in trajectory_boxes:
+                    if trajectory_box[0].label not in [2, 3]:
+                        continue
+
+                    forecast_boxes = [trajectory_box[0]]
+                    forecast_boxes[0].label = forecast_boxes[0].label % 2
+                    for i in range((forecast - 1) // 2):
+                        new_box = deepcopy(forecast_boxes[-1])
+                        new_box.center = new_box.center - time[i] * forecast_boxes[-1].velocity
+
+                        forecast_boxes = [new_box] + forecast_boxes
+
+                    for i in range((forecast - 1) // 2, forecast - 1):
+                        new_box = deepcopy(forecast_boxes[-1])
+                        new_box.center = new_box.center + time[i] * forecast_boxes[-1].velocity
+
+                        forecast_boxes.append(new_box)
+
+                    ret_boxes.append(forecast_boxes)
+
+            if forecast_mode == "velocity_dense_reverse":
+                ret_boxes = []
+                for trajectory_box in trajectory_boxes:
+                    if trajectory_box[0].label not in [4, 5]:
+                        continue
+                    
+                    forecast_boxes = [trajectory_box[0]]
+                    forecast_boxes[0].label = forecast_boxes[0].label % 2
+                    for i in range(forecast - 1):
+                        new_box = deepcopy(forecast_boxes[-1])
+                        new_box.center = new_box.center - time[i] * forecast_boxes[-1].velocity
+                        new_box.label = new_box.label % 2
+                        forecast_boxes.append(new_box)
+
+                    ret_boxes.append(forecast_boxes[::-1])
+                    
+
+        forecast_boxes = []
+        for boxes in ret_boxes:
+            boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"]) 
+            forecast_boxes.append(boxes)
+
+    else:
+        ret_boxes, ret_tokens = [], []
+        det = deepcopy(det_forecast[0])
+        boxes_forecast = _second_det_to_nusc_box(deepcopy(det_forecast[0]))
+        boxes_pointer = _second_det_to_nusc_box(deepcopy(det_forecast[1]))
+
+
+        forecast_boxes, pointer_boxes = [], []
+
+        for i in range(forecast // 2):
+            forecast_timestep, pointer_timestep = [], []
+
+            for fbox in boxes_forecast:
+                if i == fbox.label // 2:
+                    fbox.label = fbox.label % 2
+                    forecast_timestep.append(fbox)
+
+            for pbox in boxes_pointer:
+                if i == pbox.label // 2:
+                    pbox.label = pbox.label % 2
+                    pointer_timestep.append(pbox)
+
+            forecast_boxes.append(forecast_timestep)
+            pointer_boxes.append(pointer_timestep)
+
+        pointer_boxes = match_boxes(pointer_boxes)
+        forecast_boxes = match_pointer(forecast_boxes, pointer_boxes)
+
+
+        boxes_forecast = [_lidar_nusc_box_to_global(nusc, forecast, det["metadata"]["token"]) for forecast in forecast_boxes]
+        boxes_pointer = [_lidar_nusc_box_to_global(nusc, pointer, det["metadata"]["token"]) for pointer in pointer_boxes]
+        pdb.set_trace()
 
     return forecast_boxes, ret_tokens
 

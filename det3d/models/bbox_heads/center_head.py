@@ -546,14 +546,22 @@ class CenterHead(nn.Module):
             #batch_dim = torch.exp(preds_dict['dim'])
             batch_dim = torch.exp(preds_dict['dim'])
 
-            batch_rots = [preds_dict['rot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
-            batch_rotc = [preds_dict['rot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
-            
+            if not self.multi_center and not self.guided_multi_center:
+                batch_rots = [preds_dict['rot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
+                batch_rotc = [preds_dict['rot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
+            else:
+                batch_rots = preds_dict['rot'][..., 0:1]
+                batch_rotc = preds_dict['rot'][..., 1:2]
+
             if  'rrot' in preds_dict:
                 batch_rrots = [preds_dict['rrot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
                 batch_rrotc = [preds_dict['rrot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
             
-            batch_reg = preds_dict['reg']
+            if self.multi_center or self.guided_multi_center:
+                batch_reg = [preds_dict['reg'][...,2*i:2*i+2] for i in range(2)]
+            else:
+                batch_reg = preds_dict['reg']
+
             batch_hei = preds_dict['height']
 
             if double_flip:
@@ -588,16 +596,28 @@ class CenterHead(nn.Module):
                     batch_rotc[i] = batch_rotc[i].mean(dim=1)
                     batch_rots[i] = batch_rots[i].mean(dim=1)
 
-            batch_rot = [torch.atan2(batch_rots[i], batch_rotc[i]) for i in range(self.timesteps)]
+            if not self.multi_center and not self.guided_multi_center:
+                batch_rot = [torch.atan2(batch_rots[i], batch_rotc[i]) for i in range(self.timesteps)]
+            else:
+                batch_rot = torch.atan2(batch_rots, batch_rotc)
+
             if 'rrot' in preds_dict:
                 batch_rrot = [torch.atan2(batch_rrots[i], batch_rrotc[i]) for i in range(self.timesteps)]
 
             batch, H, W, num_cls = batch_hm.size()
-
-            batch_reg = batch_reg.reshape(batch, H*W, 2)
+            
+            if self.multi_center or self.guided_multi_center:
+                batch_reg = [batch_reg[i].reshape(batch, H*W, 2) for i in range(2)]
+            else:
+                batch_reg = batch_reg.reshape(batch, H*W, 2)
+            
             batch_hei = batch_hei.reshape(batch, H*W, 1)
 
-            batch_rot = [batch_rot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
+            if not self.multi_center and not self.guided_multi_center:
+                batch_rot = [batch_rot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
+            else:
+                batch_rot = batch_rot.reshape(batch, H*W, 1)
+
             if 'rrot' in preds_dict:
                 batch_rrot = [batch_rrot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
 
@@ -608,12 +628,24 @@ class CenterHead(nn.Module):
             ys = ys.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
             xs = xs.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
 
-            xs = xs.view(batch, -1, 1) + batch_reg[:, :, 0:1]
-            ys = ys.view(batch, -1, 1) + batch_reg[:, :, 1:2]
+            if self.multi_center or self.guided_multi_center:
+                xmcs, ymcs = [], []
+                for i in range(2):
+                    xmcs.append(xs.view(batch, -1, 1) + batch_reg[i][:, :, 0:1])
+                    ymcs.append(ys.view(batch, -1, 1) + batch_reg[i][:, :, 1:2])
 
-            xs = xs * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
-            ys = ys * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
-            
+                    xmcs[i] = xmcs[i] * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
+                    ymcs[i] = ymcs[i] * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
+
+                xs = xmcs
+                ys = ymcs
+            else:
+                xs = xs.view(batch, -1, 1) + batch_reg[:, :, 0:1]
+                ys = ys.view(batch, -1, 1) + batch_reg[:, :, 1:2]
+
+                xs = xs * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
+                ys = ys * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
+                
             if 'rvel' in preds_dict:
                 batch_rvel = [preds_dict['rvel'][...,2*i:2*i+2] for i in range(self.timesteps)]
 
@@ -631,21 +663,31 @@ class CenterHead(nn.Module):
                 batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rvel[i], batch_rot[i], batch_rrot[i]], dim=2) for i in range(self.timesteps)]
             
             elif 'vel' in preds_dict:
-                batch_vel = [preds_dict['vel'][...,2*i:2*i+2] for i in range(self.timesteps)]
+                if not self.multi_center and not self.guided_multi_center:
+                    batch_vel = [preds_dict['vel'][...,2*i:2*i+2] for i in range(self.timesteps)]
 
-                if double_flip:
-                    for i in range(self.timesteps):
-                        # flip vy
-                        batch_vel[i][:, 1, ..., 1] *= -1
-                        # flip vx
-                        batch_vel[i][:, 2, ..., 0] *= -1
+                    if double_flip:
+                        for i in range(self.timesteps):
+                            # flip vy
+                            batch_vel[i][:, 1, ..., 1] *= -1
+                            # flip vx
+                            batch_vel[i][:, 2, ..., 0] *= -1
 
-                        batch_vel[i][:, 3] *= -1
-                        
-                        batch_vel[i] = batch_vel[i].mean(dim=1)
+                            batch_vel[i][:, 3] *= -1
+                            
+                            batch_vel[i] = batch_vel[i].mean(dim=1)
 
-                batch_vel = [batch_vel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
-                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rot[i]], dim=2) for i in range(self.timesteps)]
+                    batch_vel = [batch_vel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
+
+          
+                    batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rot[i]], dim=2) for i in range(self.timesteps)]
+                else:
+                    batch_vel = preds_dict['vel']
+                    batch_vel = batch_vel.reshape(batch, H*W, 2)
+                    if self.multi_center or self.guided_multi_center:
+                        batch_box_preds = [torch.cat([xs[i], ys[i], batch_hei, batch_dim, batch_vel, batch_rot], dim=2) for i in range(2)]
+                    else:
+                        batch_box_preds = torch.cat([xs, ys, batch_hei, batch_dim, batch_vel, batch_rot], dim=2)    
             else: 
                 batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_rot[i]], dim=2) for i in range(self.timesteps)]
 
@@ -654,31 +696,57 @@ class CenterHead(nn.Module):
             if test_cfg.get('per_class_nms', False):
                 pass 
             else:
-                rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(self.timesteps)]) 
+                if not self.multi_center and not self.guided_multi_center:
+                    rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(self.timesteps)]) 
+                else:
+                    rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(2)])
 
         ret_forecast_list = []
-        for t in range(self.timesteps):
-            # Merge branches results
-            ret_list = []
-            num_samples = len(rets[0][0])
+        if not self.multi_center and not self.guided_multi_center:
+            for t in range(self.timesteps):
+                # Merge branches results
+                ret_list = []
+                num_samples = len(rets[0][0])
 
-            for i in range(num_samples):
-                ret = {}
-                for k in rets[0][0][i].keys():
-                    if k in ["box3d_lidar", "scores"]:
-                        ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-                    elif k in ["label_preds"]:
-                        flag = 0
-                        for j, num_class in enumerate(self.num_classes):
-                            rets[j][t][i][k] += flag
-                            flag += num_class
-                        ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-                
-                ret['metadata'] = metas[0][i]
-                ret_list.append(ret)
+                for i in range(num_samples):
+                    ret = {}
+                    for k in rets[0][0][i].keys():
+                        if k in ["box3d_lidar", "scores"]:
+                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
+                        elif k in ["label_preds"]:
+                            flag = 0
+                            for j, num_class in enumerate(self.num_classes):
+                                rets[j][t][i][k] += flag
+                                flag += num_class
+                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
+                    
+                    ret['metadata'] = metas[0][i]
+                    ret_list.append(ret)
 
-            ret_forecast_list.append(ret_list)
+                ret_forecast_list.append(ret_list)
+        else:
+            for t in range(2):
+                # Merge branches results
+                ret_list = []
+                num_samples = len(rets[0][0])
 
+                for i in range(num_samples):
+                    ret = {}
+                   
+                    for k in rets[0][0][i].keys():
+                        if k in ["box3d_lidar", "scores"]:
+                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
+                        elif k in ["label_preds"]:
+                            flag = 0
+                            for j, num_class in enumerate(self.num_classes):
+                                rets[j][t][i][k] += flag
+                                flag += num_class
+                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
+
+                    ret['metadata'] = metas[0][i]
+                    ret_list.append(ret)
+
+                ret_forecast_list.append(ret_list)
         return ret_forecast_list #timestamps, num_samples, ...
 
     @torch.no_grad()
