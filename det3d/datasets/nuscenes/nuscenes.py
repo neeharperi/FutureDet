@@ -360,6 +360,9 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                 curr_center = box_center(curr_box)
                 future_center = box_center(future_box) 
                 
+                if len(curr_center) == 0 or len(future_center) == 0:
+                    continue 
+
                 dist_mat = distance_matrix(curr_center, future_center)
                 dist_idx = np.argmin(dist_mat, axis=0)
                 dist = np.min(dist_mat, axis=0)
@@ -549,7 +552,7 @@ class NuScenesDataset(PointCloudDataset):
     def __getitem__(self, idx):
         return self.get_sensor_data(idx)
 
-    def evaluation(self, detections, output_dir=None, testset=False, forecast=7, forecast_mode="velocity_forward", tp_pct=0.6, root="/ssd0/nperi/nuScenes", static_only=False, cohort_analysis=False, nms=False, split="val", version="v1.0-trainval"):
+    def evaluation(self, detections, output_dir=None, testset=False, forecast=7, forecast_mode="velocity_forward", tp_pct=0.6, root="/ssd0/nperi/nuScenes", static_only=False, cohort_analysis=False, nms=False, K=1, split="val", version="v1.0-trainval"):
         self.eval_version = "detection_forecast"
         
         if not testset:
@@ -696,7 +699,8 @@ class NuScenesDataset(PointCloudDataset):
                 forecast=forecast,
                 tp_pct=tp_pct,
                 static_only=static_only,
-                cohort_analysis=cohort_analysis
+                cohort_analysis=cohort_analysis,
+                topK=K,
             )
 
             with open(Path(output_dir) / "metrics_summary.json", "r") as f:

@@ -96,6 +96,7 @@ parser.add_argument("--static_only", action="store_true")
 parser.add_argument("--forecast_mode", default="velocity_forward")
 parser.add_argument("--cohort_analysis", action="store_true")
 parser.add_argument("--nms", action="store_true")
+parser.add_argument("--K", default=1)
 
 args = parser.parse_args()
 
@@ -114,6 +115,7 @@ tp_pct = args.tp_pct
 static_only = args.static_only
 cohort_analysis = args.cohort_analysis
 nms = args.nms
+K = args.K
 
 configPath = "{dataset}_{architecture}_{model}_detection.py".format(dataset=dataset,
                                                                     architecture=architecture,
@@ -130,7 +132,7 @@ track_dir = "models/{experiment}/{dataset}_{architecture}_{model}_tracking".form
                                                                                    dataset=dataset)
 print("Evaluating Detection Results for " + modelCheckPoint)
 
-os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --tp_pct {tp_pct} {static_only} {cohort_analysis} {nms} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
+os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --tp_pct {tp_pct} {static_only} {cohort_analysis} {nms} --K {K} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
                                                                                                                                                                                     configPath=configPath, 
                                                                                                                                                                                     extractBox= "--extractBox" if extractBox else "", 
                                                                                                                                                                                     det_dir=det_dir, 
@@ -138,6 +140,7 @@ os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extr
                                                                                                                                                                                     forecast=forecast,
                                                                                                                                                                                     forecast_mode=forecast_mode,
                                                                                                                                                                                     tp_pct=tp_pct,
+                                                                                                                                                                                    K=K,
                                                                                                                                                                                     static_only= "--static_only" if static_only else "",
                                                                                                                                                                                     cohort_analysis= "--cohort_analysis" if cohort_analysis else "",
                                                                                                                                                                                     nms= "--nms" if nms else "",

@@ -84,6 +84,7 @@ def parse_args():
     parser.add_argument("--static_only", action="store_true")
     parser.add_argument("--cohort_analysis", action="store_true")
     parser.add_argument("--nms", action="store_true")
+    parser.add_argument("--K", default=1, type=int)
     parser.add_argument("--split", default="val")
     parser.add_argument("--version", default="v1.0-trainval")
 
@@ -247,7 +248,7 @@ def main():
         return
     
     predictions = load_pred(args.work_dir)
-    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, nms = args.nms, split=args.split, version=args.version)
+    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, nms=args.nms, K=args.K, split=args.split, version=args.version)
 
     if result_dict is not None:
         for k, v in result_dict["results"].items():
