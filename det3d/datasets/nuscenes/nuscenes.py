@@ -373,7 +373,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                     curr, future, dst = data
                     future = list(future)
 
-                    if dst < 0.5:
+                    if dst < 0.1:
                         future[0] = curr
         
                     ret_boxes.append(future)
