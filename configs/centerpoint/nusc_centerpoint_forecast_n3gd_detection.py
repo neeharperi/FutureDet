@@ -7,9 +7,9 @@ DOUBLE_FLIP=False
 TWO_STAGE=False 
 REVERSE=False
 CONSISTENCY=False
-DENSE=False
+DENSE=True
 MULTI_CENTER=False
-GUIDED_MULTI_CENTER=False
+GUIDED_MULTI_CENTER=True
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -167,7 +167,7 @@ test_anno = data_root + "/infos_test_10sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=0,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         root_path=data_root,

@@ -364,7 +364,7 @@ class CenterHead(nn.Module):
                 hm_loss = torch.tensor(0).cuda()
             elif self.reverse:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][-1][task_id], example['ind'][-1][task_id], example['mask'][-1][task_id], example['cat'][-1][task_id])
-            elif self.dense or self.multi_center or self.guided_multi_center:
+            elif self.dense or self.multi_center:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['cat'][(self.timesteps // 2) * (task_id // 2)][task_id % 2])
             else:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][0][task_id], example['ind'][0][task_id], example['mask'][0][task_id], example['cat'][0][task_id])
@@ -373,7 +373,7 @@ class CenterHead(nn.Module):
             if self.reverse:
                 target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)][::-1]
             else:
-                if self.dense or self.multi_center or self.guided_multi_center:
+                if self.dense or self.multi_center:
                     target_box = [example['anno_box'][i][task_id % 2] for i in range(self.timesteps)]
 
                 else:
@@ -387,7 +387,7 @@ class CenterHead(nn.Module):
                         preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
                                         preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::], preds_dict['rrot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
                     else:
-                        if self.multi_center or self.guided_multi_center:
+                        if self.multi_center:
                             preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
                                                             preds_dict['vel'], reds_dict['rvel'], reds_dict['rot'], preds_dict['rrot']), dim=1) for i in range(2)]
                 
@@ -400,7 +400,7 @@ class CenterHead(nn.Module):
                         preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
                                                             preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
                     else:
-                        if self.multi_center or self.guided_multi_center:
+                        if self.multi_center:
                             preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
                                                             preds_dict['vel'], preds_dict['rot']), dim=1) for i in range(2)]
                 
@@ -442,7 +442,7 @@ class CenterHead(nn.Module):
                 if self.dense:
                     box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[i]) for i in range(self.timesteps)]
 
-                elif self.multi_center or self.guided_multi_center:
+                elif self.multi_center:
                     box_loss = [self.crit_reg(preds_dict['anno_box'][0], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[(self.timesteps // 2) * (task_id // 2)]),
                                self.crit_reg(preds_dict['anno_box'][1], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[0])]
                 
@@ -458,7 +458,7 @@ class CenterHead(nn.Module):
                 for i in range(self.timesteps):
                     loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights_two_stage_forecast)).sum())
             else:
-                if self.multi_center or self.guided_multi_center:
+                if self.multi_center:
                     loc_loss.append((box_loss[0] * box_loss[0].new_tensor(self.code_weights)).sum()) 
                     loc_loss.append((box_loss[1] * box_loss[1].new_tensor(self.code_weights_multi_center_forecast)).sum())
                 else:
@@ -475,7 +475,7 @@ class CenterHead(nn.Module):
             if self.dense:
                 ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2].float()))})
 
-            elif self.multi_center or self.guided_multi_center:
+            elif self.multi_center:
                 ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(2)], 'num_positive': sum(sum(example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2].float()))})
 
             else:
@@ -546,7 +546,7 @@ class CenterHead(nn.Module):
             #batch_dim = torch.exp(preds_dict['dim'])
             batch_dim = torch.exp(preds_dict['dim'])
 
-            if not self.multi_center and not self.guided_multi_center:
+            if not self.multi_center:
                 batch_rots = [preds_dict['rot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
                 batch_rotc = [preds_dict['rot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
             else:
@@ -557,7 +557,7 @@ class CenterHead(nn.Module):
                 batch_rrots = [preds_dict['rrot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
                 batch_rrotc = [preds_dict['rrot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
             
-            if self.multi_center or self.guided_multi_center:
+            if self.multi_center:
                 batch_reg = [preds_dict['reg'][...,2*i:2*i+2] for i in range(2)]
             else:
                 batch_reg = preds_dict['reg']
@@ -596,7 +596,7 @@ class CenterHead(nn.Module):
                     batch_rotc[i] = batch_rotc[i].mean(dim=1)
                     batch_rots[i] = batch_rots[i].mean(dim=1)
 
-            if not self.multi_center and not self.guided_multi_center:
+            if not self.multi_center:
                 batch_rot = [torch.atan2(batch_rots[i], batch_rotc[i]) for i in range(self.timesteps)]
             else:
                 batch_rot = torch.atan2(batch_rots, batch_rotc)
@@ -606,14 +606,14 @@ class CenterHead(nn.Module):
 
             batch, H, W, num_cls = batch_hm.size()
             
-            if self.multi_center or self.guided_multi_center:
+            if self.multi_center:
                 batch_reg = [batch_reg[i].reshape(batch, H*W, 2) for i in range(2)]
             else:
                 batch_reg = batch_reg.reshape(batch, H*W, 2)
             
             batch_hei = batch_hei.reshape(batch, H*W, 1)
 
-            if not self.multi_center and not self.guided_multi_center:
+            if not self.multi_center:
                 batch_rot = [batch_rot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
             else:
                 batch_rot = batch_rot.reshape(batch, H*W, 1)
@@ -628,7 +628,7 @@ class CenterHead(nn.Module):
             ys = ys.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
             xs = xs.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
 
-            if self.multi_center or self.guided_multi_center:
+            if self.multi_center:
                 xmcs, ymcs = [], []
                 for i in range(2):
                     xmcs.append(xs.view(batch, -1, 1) + batch_reg[i][:, :, 0:1])
@@ -663,7 +663,7 @@ class CenterHead(nn.Module):
                 batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rvel[i], batch_rot[i], batch_rrot[i]], dim=2) for i in range(self.timesteps)]
             
             elif 'vel' in preds_dict:
-                if not self.multi_center and not self.guided_multi_center:
+                if not self.multi_center:
                     batch_vel = [preds_dict['vel'][...,2*i:2*i+2] for i in range(self.timesteps)]
 
                     if double_flip:
@@ -684,7 +684,7 @@ class CenterHead(nn.Module):
                 else:
                     batch_vel = preds_dict['vel']
                     batch_vel = batch_vel.reshape(batch, H*W, 2)
-                    if self.multi_center or self.guided_multi_center:
+                    if self.multi_center:
                         batch_box_preds = [torch.cat([xs[i], ys[i], batch_hei, batch_dim, batch_vel, batch_rot], dim=2) for i in range(2)]
                     else:
                         batch_box_preds = torch.cat([xs, ys, batch_hei, batch_dim, batch_vel, batch_rot], dim=2)    
@@ -696,13 +696,13 @@ class CenterHead(nn.Module):
             if test_cfg.get('per_class_nms', False):
                 pass 
             else:
-                if not self.multi_center and not self.guided_multi_center:
+                if not self.multi_center:
                     rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(self.timesteps)]) 
                 else:
                     rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(2)])
 
         ret_forecast_list = []
-        if not self.multi_center and not self.guided_multi_center:
+        if not self.multi_center:
             for t in range(self.timesteps):
                 # Merge branches results
                 ret_list = []

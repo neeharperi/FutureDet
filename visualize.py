@@ -30,8 +30,8 @@ from nuscenes.eval.common.data_classes import EvalBox
 from pyquaternion import Quaternion
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--experiment', default="OldModel")
-parser.add_argument('--model', default="forecast_n5")
+parser.add_argument('--experiment', default="Forecast")
+parser.add_argument('--model', default="forecast_n3d")
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument('--dataset', default="nusc")
@@ -61,9 +61,9 @@ if not os.path.isdir("{outputDirectory}/{experiment}/{dataset}_{architecture}_{m
 
 
 cfg = detect_configs("detection_forecast")
-nusc = NuScenes(version="v1.0-mini", dataroot=rootDirectory, verbose=True)
+nusc = NuScenes(version="v1.0-trainval", dataroot=rootDirectory, verbose=True)
 pred_boxes, meta = load_prediction(det_dir, cfg.max_boxes_per_sample, DetectionBox, verbose=True)
-gt_boxes = load_gt(nusc, "mini_val", DetectionBox, verbose=True)
+gt_boxes = load_gt(nusc, "val", DetectionBox, verbose=True)
 
 assert set(pred_boxes.sample_tokens) == set(gt_boxes.sample_tokens), "Samples in split don't match samples in predicted tracks."
 
@@ -75,7 +75,7 @@ gt_boxes = filter_eval_boxes(nusc, gt_boxes, cfg.class_range, verbose=True)
 
 
 scenes = {}
-classname = ["car"]
+classname = ["pedestrian"]
 for sample_token in tqdm(gt_boxes.boxes.keys()):
     gt = gt_boxes.boxes[sample_token]
     pred = pred_boxes.boxes[sample_token]
