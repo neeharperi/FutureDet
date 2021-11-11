@@ -182,7 +182,7 @@ detection_dataFrame = pd.DataFrame.from_dict(detection_dataFrame)
 if not os.path.isdir("results/" + experiment + "/" + model):
     os.makedirs("results/" + experiment + "/" + model)
 
-filename = "results/{experiment}/{model}/{dataset}_{architecture}_{model}_{forecast}_{forecast_mode}_{cohort}{static_only}{nms}detection.csv".format(experiment=experiment, model=model, dataset=dataset, architecture=architecture, forecast="t{}".format(forecast), forecast_mode=forecast_mode, cohort="cohort_" if cohort_analysis else "", static_only = "static_" if static_only else "", nms = "nms_" if nms else "")
+filename = "results/{experiment}/{model}/{dataset}_{architecture}_{model}_{forecast}_{forecast_mode}_tp{tp_pct}_K{K}_{cohort}{static_only}{nms}detection.csv".format(experiment=experiment, model=model, dataset=dataset, architecture=architecture, forecast="t{}".format(forecast), forecast_mode=forecast_mode, tp_pct=tp_pct, K=K, cohort="cohort_" if cohort_analysis else "", static_only = "static_" if static_only else "", nms = "nms_" if nms else "")
 detection_dataFrame.to_csv(filename, index=False)
 
 #########################################################################
