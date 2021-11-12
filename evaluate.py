@@ -96,7 +96,7 @@ parser.add_argument("--static_only", action="store_true")
 parser.add_argument("--forecast_mode", default="velocity_forward")
 parser.add_argument("--cohort_analysis", action="store_true")
 parser.add_argument("--nms", action="store_true")
-parser.add_argument("--K", default=5)
+parser.add_argument("--K", default=1)
 
 args = parser.parse_args()
 
