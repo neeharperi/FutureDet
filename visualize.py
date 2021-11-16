@@ -15,6 +15,7 @@ from matplotlib.axes import Axes
 from tqdm import tqdm
 from copy import deepcopy
 from itertools import tee 
+import pickle 
 
 from nuscenes.eval.common.config import config_factory as detect_configs
 from nuscenes.eval.common.loaders import (add_center_dist, filter_eval_boxes,
@@ -50,12 +51,12 @@ def trajectory(nusc, box: DetectionBox, timesteps=7) -> float:
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiment', default="Forecast")
-parser.add_argument('--model', default="forecast_n3d")
+parser.add_argument('--model', default="forecast_n3r")
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument('--dataset', default="nusc")
 parser.add_argument('--rootDirectory', default="/home/ubuntu/Workspace/Data/nuScenes/")
-parser.add_argument('--outputDirectory', default="mini-Visuals/")
+parser.add_argument('--outputDirectory', default="Visuals/")
 
 args = parser.parse_args()
 
@@ -80,9 +81,21 @@ if not os.path.isdir("{outputDirectory}/{experiment}/{dataset}_{architecture}_{m
 
 
 cfg = detect_configs("detection_forecast_cohort")
-nusc = NuScenes(version="v1.0-mini", dataroot=rootDirectory, verbose=True)
+
+if os.path.isfile(rootDirectory + "/nusc.pkl"):
+    nusc = pickle.load(open(rootDirectory + "/nusc.pkl", "rb"))
+else:
+    nusc = NuScenes(version='v1.0-trainval', dataroot=rootDirectory, verbose=True)
+    pickle.dump(nusc, open(rootDirectory + "/nusc.pkl", "wb"))
+
+
 pred_boxes, meta = load_prediction(det_dir, cfg.max_boxes_per_sample, DetectionBox, verbose=True)
-gt_boxes = load_gt(nusc, "mini_val", DetectionBox, verbose=True)
+
+if os.path.isfile(rootDirectory + "/gt.pkl"):
+    gt_boxes = pickle.load(open(rootDirectory + "/gt.pkl", "rb"))
+else:
+    gt_boxes = load_gt(nusc, "val", DetectionBox, verbose=True, forecast=forecast)
+    pickle.dump(gt_boxes, open(rootDirectory + "/gt.pkl", "wb"))
 
 for sample_token in pred_boxes.boxes.keys():
     for box in pred_boxes.boxes[sample_token]:

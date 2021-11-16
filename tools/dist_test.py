@@ -84,7 +84,7 @@ def parse_args():
     parser.add_argument("--static_only", action="store_true")
     parser.add_argument("--cohort_analysis", action="store_true")
     parser.add_argument("--nms", action="store_true")
-    parser.add_argument("--K", default=5, type=int)
+    parser.add_argument("--K", default=1, type=int)
     parser.add_argument("--split", default="val")
     parser.add_argument("--version", default="v1.0-trainval")
 

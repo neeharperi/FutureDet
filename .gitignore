@@ -11,5 +11,5 @@ venv/
 *.bin
 .vscode/
 models/*
-results/
+results*/
 Visuals/

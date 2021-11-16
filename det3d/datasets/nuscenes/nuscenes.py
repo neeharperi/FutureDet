@@ -8,6 +8,7 @@ import json
 import random
 import operator
 import numpy as np
+import os
 import torch 
 import pdb
 from pathlib import Path
@@ -37,7 +38,8 @@ from det3d.datasets.nuscenes.nusc_common import (
 )
 from pyquaternion import Quaternion
 from det3d.datasets.registry import DATASETS
-
+import networkx as nx
+import itertools
 from tqdm import tqdm 
 
 def get_sample_data(nusc, pred):
@@ -157,7 +159,6 @@ def get_token(scene_data, sample_data, sample_data_tokens, src_data_token, offse
 
     return dst_data_token
 
-
 def box_center(boxes):
     center_box = np.array([box.center.tolist() for box in boxes]) 
     return center_box
@@ -217,6 +218,27 @@ def box_serialize(box, token, name, attr):
 
     return ret 
 
+def network_split(L):
+    G=nx.from_edgelist(L)
+
+    l=list(nx.connected_components(G))
+    # after that we create the map dict , for get the unique id for each nodes
+    mapdict={z:x for x, y in enumerate(l) for z in y }
+    # then append the id back to original data for groupby 
+    newlist=[ x+(mapdict[x[0]],)for  x in L]
+    #using groupby make the same id into one sublist
+    newlist=sorted(newlist,key=lambda x : x[2])
+    yourlist=[list(y) for x , y in itertools.groupby(newlist,key=lambda x : x[2])]
+
+    ret = {}
+
+    for group in yourlist:
+        for pair in group:
+            a, b, i = pair
+            ret[(a, b)] = i
+
+    return ret
+
 def multi_future(forecast_boxes):
     for sample_token in forecast_boxes.keys():
         sample_boxes = []
@@ -229,22 +251,13 @@ def multi_future(forecast_boxes):
             dist_mat = distance_matrix(pred_center, pred_center)
             idxa, idxb = np.where(dist_mat < 1e-3)
 
-            fid = 0
-            matched = {}
+            L = []
             for ida, idb in zip(idxa, idxb):
-                forecast_id = None
-                if ida in matched:
-                    forecast_id = matched[ida]
-                
-                elif idb in matched:
-                    forecast_id = matched[idb]
+                L.append((ida, idb))
 
-                else:
-                    matched[ida] = fid
-                    matched[idb] = fid 
-                    forecast_id = fid
-                    fid = fid + 1
-
+            net = network_split(L)
+            for ida, idb in zip(idxa, idxb):
+                forecast_id = net[(ida, idb)]
                 boxes[ida]["forecast_id"] = forecast_id
                 boxes[idb]["forecast_id"] = forecast_id
 
@@ -263,20 +276,18 @@ def multi_future(forecast_boxes):
                     box["detection_score"] = detection_score
                     box["forecast_score"] = forecast_score
                     box["forecast_id"] = forecast_id
-
+            
             sample_boxes += boxes
 
         forecast_boxes[sample_token] = sample_boxes
 
     return forecast_boxes
-            
-        
 
 def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode):
     ret_boxes, ret_tokens = [], []
     det = deepcopy(det_forecast[0])
     boxes = _second_det_to_nusc_box(det)
-    #boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
+    boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
 
     ret_boxes.append(boxes)
     ret_tokens.append(det["metadata"]["token"])
@@ -290,6 +301,8 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                 det = deepcopy(det_forecast[t])
                 
             boxes = _second_det_to_nusc_box(det)
+            boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
+
             src_token, dst_token = ret_tokens[-1], get_token(scene_data, sample_data, sample_data_tokens, ret_tokens[-1], 1)
             
             ret_boxes.append(boxes), ret_tokens.append(dst_token)
@@ -339,10 +352,11 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                 forecast_boxes = [trajectory_box[0]]
                 for i in range(forecast - 1):
                     new_box = deepcopy(forecast_boxes[-1])
-                    new_box.center = new_box.center - time[i] * trajectory_box[i].velocity
+                    new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
 
                     forecast_boxes.append(new_box)
 
+                #forecast_boxes = forecast_boxes[::-1]
                 ret_boxes.append(forecast_boxes[::-1])
 
         if forecast_mode == "velocity_dense_forward":
@@ -393,15 +407,16 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                 forecast_boxes[0].label = forecast_boxes[0].label % 2
                 for i in range(forecast - 1):
                     new_box = deepcopy(forecast_boxes[-1])
-                    new_box.center = new_box.center - time[i] * trajectory_box[i].velocity
+                    new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
                     new_box.label = new_box.label % 2
                     forecast_boxes.append(new_box)
 
-                ret_boxes.append(forecast_boxes[::-1])
+                #forecast_boxes = forecast_boxes[::-1]
+                ret_boxes.append(forecast_boxes)
 
         if forecast_mode == "velocity_dense_forward_reverse":
             ret_boxes = []
-            dist_thresh = {0 : 0.25, 1 : 0.05}
+            dist_thresh = {0 : 0.5, 1 : 0.05}
             for class_name in [0, 1]:
                 curr_box, curr_boxes = [], []
                 future_box, future_boxes = [], []
@@ -429,11 +444,11 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                     forecast_boxes[0].label = forecast_boxes[0].label % 2
                     for i in range(forecast - 1):
                         new_box = deepcopy(forecast_boxes[-1])
-                        new_box.center = new_box.center - time[i] * trajectory_box[i].velocity
+                        new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
                         new_box.label = new_box.label % 2
                         forecast_boxes.append(new_box)
 
-                    forecast_boxes = forecast_boxes[::-1]
+                    #forecast_boxes = forecast_boxes[::-1]
                     future_boxes.append(forecast_boxes)
                     future_box.append(forecast_boxes[0])
 
@@ -444,88 +459,33 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                     continue
 
                 dist_mat = distance_matrix(curr_center, future_center)
-                dist_idx = np.argmin(dist_mat, axis=1)
-                distance = np.min(dist_mat, axis=1)
+                dist_idx = np.argmin(dist_mat, axis=0)
+                distance = np.min(dist_mat, axis=0)
 
-                for dist, idx, curr in zip(distance, dist_idx, curr_boxes):
-                    future = future_boxes[idx]
-
+                unmatched = set(np.arange(len(curr_boxes))) - set(dist_idx)
+                for dist, idx, future in zip(distance, dist_idx, future_boxes):
+                    curr = curr_boxes[idx]
                     if dist < dist_thresh[class_name]:
                         new_traj = [curr[0]] + future[1:]
+                        ret_boxes.append(new_traj)
                     else:
-                        new_traj = curr
-                        
-                    ret_boxes.append(new_traj)
+                        translation = curr[0].center
+                        for box in curr.forecast_boxes:
+                            box.center = translation 
 
-        if forecast_mode == "velocity_dense_forward_center":
-            ret_boxes = []
-            dist_thresh = {0 : 0.25, 1 : 0.05}
-            for class_name in [0, 1]:
-                curr_box, curr_boxes = [], []
-                future_box, future_boxes = [], []
+                        ret_boxes.append(curr)
 
-                for trajectory_box in trajectory_boxes:
-                    if trajectory_box[0].label != class_name:
-                        continue
 
-                    forecast_boxes = [trajectory_box[0]]
-                    forecast_boxes[0].label = forecast_boxes[0].label % 2
-                    for i in range(forecast - 1):
-                        new_box = deepcopy(forecast_boxes[-1])
-                        new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
+                for idx in unmatched:
+                    curr = curr_boxes[idx]
+                    ret_boxes.append(curr)
 
-                        forecast_boxes.append(new_box)
+    #forecast_boxes = []
+    #for boxes in ret_boxes:
+    #    boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
+    #    forecast_boxes.append(boxes)
 
-                    curr_boxes.append(forecast_boxes)
-                    curr_box.append(forecast_boxes[0])
-
-                for trajectory_box in trajectory_boxes:
-                    if trajectory_box[0].label not in [2, 3]:
-                        continue
-
-                    forecast_boxes = [trajectory_box[0]]
-                    forecast_boxes[0].label = forecast_boxes[0].label % 2
-                    for i in range((forecast - 1) // 2):
-                        new_box = deepcopy(forecast_boxes[-1])
-                        new_box.center = new_box.center - time[i] * trajectory_box[i].velocity
-
-                        forecast_boxes.append(new_box)
-
-                    for i in range((forecast - 1) // 2, forecast - 1):
-                        new_box = deepcopy(forecast_boxes[-1])
-                        new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
-
-                        forecast_boxes = [new_box] + forecast_boxes         
-
-                    future_boxes.append(forecast_boxes)
-                    future_box.append(forecast_boxes[0])
-
-                curr_center = box_center(curr_box)
-                future_center = box_center(future_box) 
-                
-                if len(curr_center) == 0 or len(future_center) == 0:
-                    continue
-
-                dist_mat = distance_matrix(curr_center, future_center)
-                dist_idx = np.argmin(dist_mat, axis=1)
-                distance = np.min(dist_mat, axis=1)
-
-                for dist, idx, curr in zip(distance, dist_idx, curr_boxes):
-                    future = future_boxes[idx]
-
-                    if dist < dist_thresh[class_name]:
-                        new_traj = [curr[0]] + future[1:]
-                    else:
-                        new_traj = curr
-                        
-                    ret_boxes.append(new_traj)
-
-    forecast_boxes = []
-    for boxes in ret_boxes:
-        boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
-        forecast_boxes.append(boxes)
-
-    return forecast_boxes, ret_tokens
+    return ret_boxes, ret_tokens
 
 @DATASETS.register_module
 class NuScenesDataset(PointCloudDataset):
@@ -718,8 +678,12 @@ class NuScenesDataset(PointCloudDataset):
             "results": {},
             "meta": None,
         }
-
-        nusc = NuScenes(version=version, dataroot=root, verbose=True)
+        
+        if os.path.isfile(root + "/nusc.pkl"):
+            nusc = pickle.load(open(root + "/nusc.pkl", "rb"))
+        else:
+            nusc = NuScenes(version=version, dataroot=root, verbose=True)
+            pickle.dump(nusc, open(root + "/nusc.pkl", "wb"))
 
         mapped_class_names = []
         for n in self._class_names:
@@ -831,7 +795,7 @@ class NuScenesDataset(PointCloudDataset):
             for key in res.keys():
                 nusc_annos["results"][key] = [det.serialize() for det in res[key]]
 
-
+        
         name = self._info_path.split("/")[-1].split(".")[0]
         res_path = str(Path(output_dir) / Path(name + ".json"))
         
@@ -852,6 +816,7 @@ class NuScenesDataset(PointCloudDataset):
                 static_only=static_only,
                 cohort_analysis=cohort_analysis,
                 topK=K,
+                root=root,
             )
 
             with open(Path(output_dir) / "metrics_summary.json", "r") as f:
