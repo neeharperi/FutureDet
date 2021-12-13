@@ -18,6 +18,7 @@ class DataBaseSamplerV2:
         db_prepor=None,
         rate=1.0,
         global_rot_range=None,
+        sampler_type="standard",
         logger=None,
     ):
         for k, v in db_infos.items():
@@ -37,6 +38,8 @@ class DataBaseSamplerV2:
         self._sample_classes = []
         self._sample_max_nums = []
         self._use_group_sampling = False  # slower
+        self.sampler_type = sampler_type
+
         if any([len(g) > 1 for g in groups]):
             self._use_group_sampling = True
         if not self._use_group_sampling:
@@ -46,6 +49,7 @@ class DataBaseSamplerV2:
                 self._sample_classes += group_names
                 self._sample_max_nums += list(group_info.values())
         else:
+
             for group_info in groups:
                 group_dict = {}
                 group_names = list(group_info.keys())
@@ -99,21 +103,33 @@ class DataBaseSamplerV2:
         root_path,
         gt_boxes,
         gt_names,
+        gt_trajectory,
         num_point_features,
         random_crop=False,
         gt_group_ids=None,
         calib=None,
         road_planes=None,
+        sampler_type="standard"
     ):
+        name_trajectory = []
+        for name, traj in zip(gt_names, gt_trajectory):
+            name_trajectory.append(traj + "_" + name)
+        name_trajectory = np.array(name_trajectory)
 
         sampled_num_dict = {}
         sample_num_per_class = []
         for class_name, max_sample_num in zip(
             self._sample_classes, self._sample_max_nums
         ):
-            sampled_num = int(
-                max_sample_num - np.sum([n == class_name for n in gt_names])
-            )
+
+            if sampler_type == "standard":
+                sampled_num = int(
+                    max_sample_num - np.sum([n == class_name for n in gt_names])
+                )
+            else:
+                sampled_num = int(
+                    max_sample_num - np.sum([n == class_name for n in name_trajectory])
+                )              
 
             sampled_num = np.round(self._rate * sampled_num).astype(np.int64)
             sampled_num_dict[class_name] = sampled_num
@@ -143,7 +159,7 @@ class DataBaseSamplerV2:
                     )
                 else:
                     sampled_cls, forecast_cls = self.sample_class_v2(
-                        class_name, sampled_num, avoid_coll_boxes
+                        class_name, sampled_num, avoid_coll_boxes, sampler_type
                     )
 
                 sampled += sampled_cls
@@ -254,11 +270,25 @@ class DataBaseSamplerV2:
             ret = self._sampler_dict[name].sample(num)
             return ret, np.ones((len(ret),), dtype=np.int64)
 
-    def sample_class_v2(self, name, num, gt_boxes):
+    def sample_class_v2(self, name, num, gt_boxes, sampler_type):
+        if sampler_type != "standard":
+            trajectory, name = name.split("_")
+
         if name not in self._sampler_dict:
             return [], []
 
-        sampled = self._sampler_dict[name].sample(num)
+        if sampler_type == "standard":
+            sampled = self._sampler_dict[name].sample(num)
+        else:
+            sampled = []
+
+            while len(sampled) < num:
+                sample = self._sampler_dict[name].sample(1)[0]
+                if sample["trajectory"][0] != trajectory:
+                    continue 
+
+                sampled.append(sample)
+
         forecast = []
         for sample in sampled:
             try:
@@ -268,8 +298,6 @@ class DataBaseSamplerV2:
                 sample["difficulty"] = sample["difficulty"][0]
             except: 
                 forecast.append([sample["box3d_lidar"][-6:]])
-
-      
 
         sampled = copy.deepcopy(sampled)
         forecast = copy.deepcopy(forecast)

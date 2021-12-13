@@ -37,7 +37,7 @@ def center_distance(gt_box: EvalBox, pred_box: EvalBox) -> float:
     :param pred_box: Predicted sample.
     :return: L2 distance.
     """
-    return np.linalg.norm(np.array(pred_box["translation"][:2]) - np.array(gt_box["translation"][:2]))
+    return np.linalg.norm(np.array(pred_box.translation[:2]) - np.array(gt_box.translation[:2]))
 
 def trajectory(nusc, box: DetectionBox, timesteps=7) -> float:
     target = box.forecast_boxes[-1]
@@ -51,12 +51,13 @@ def trajectory(nusc, box: DetectionBox, timesteps=7) -> float:
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiment', default="Forecast")
-parser.add_argument('--model', default="forecast_n3r")
+parser.add_argument('--model', default="forecast_n3d")
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument('--dataset', default="nusc")
 parser.add_argument('--rootDirectory', default="/home/ubuntu/Workspace/Data/nuScenes/")
 parser.add_argument('--outputDirectory', default="Visuals/")
+parser.add_argument("--dets_only", action="store_true")
 
 args = parser.parse_args()
 
@@ -66,6 +67,7 @@ model = args.model
 forecast = args.forecast
 architecture = args.architecture
 dataset = args.dataset
+dets_only = args.dets_only
 
 rootDirectory = args.rootDirectory
 outputDirectory = args.outputDirectory
@@ -80,14 +82,13 @@ if not os.path.isdir("{outputDirectory}/{experiment}/{dataset}_{architecture}_{m
     os.makedirs("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection".format(outputDirectory=outputDirectory, experiment=experiment, dataset=dataset, architecture=architecture, model=model), exist_ok=True)
 
 
-cfg = detect_configs("detection_forecast_cohort")
+cfg = detect_configs("detection_forecast")
 
 if os.path.isfile(rootDirectory + "/nusc.pkl"):
     nusc = pickle.load(open(rootDirectory + "/nusc.pkl", "rb"))
 else:
     nusc = NuScenes(version='v1.0-trainval', dataroot=rootDirectory, verbose=True)
     pickle.dump(nusc, open(rootDirectory + "/nusc.pkl", "wb"))
-
 
 pred_boxes, meta = load_prediction(det_dir, cfg.max_boxes_per_sample, DetectionBox, verbose=True)
 
@@ -97,29 +98,15 @@ else:
     gt_boxes = load_gt(nusc, "val", DetectionBox, verbose=True, forecast=forecast)
     pickle.dump(gt_boxes, open(rootDirectory + "/gt.pkl", "wb"))
 
-for sample_token in pred_boxes.boxes.keys():
-    for box in pred_boxes.boxes[sample_token]:
-        label = trajectory(nusc, box, forecast)
-        box.detection_name = label + "_" + box.detection_name
-
-for sample_token in gt_boxes.boxes.keys():
-    for box in gt_boxes.boxes[sample_token]:
-        label = trajectory(nusc, box, forecast)
-        box.detection_name = label + "_" + box.detection_name
-
-assert set(pred_boxes.sample_tokens) == set(gt_boxes.sample_tokens), "Samples in split don't match samples in predicted tracks."
-
-pred_boxes = add_center_dist(nusc, pred_boxes)
-gt_boxes = add_center_dist(nusc, gt_boxes)
-
-pred_boxes = filter_eval_boxes(nusc, pred_boxes, cfg.class_range, verbose=True)
-gt_boxes = filter_eval_boxes(nusc, gt_boxes, cfg.class_range, verbose=True)
-
+classname = ["car"]
 
 scenes = {}
-classname = ["moving_car"]
 for sample_token in tqdm(gt_boxes.boxes.keys()):
     gt = gt_boxes.boxes[sample_token]
+
+    if sample_token not in pred_boxes.boxes.keys():
+        continue
+
     pred = pred_boxes.boxes[sample_token]
 
     class_gt = [box for box in gt if box.detection_name in classname]
@@ -127,7 +114,7 @@ for sample_token in tqdm(gt_boxes.boxes.keys()):
     if len(class_gt) == 0:
         continue
 
-    visualize_sample_forecast(nusc, sample_token, gt, pred, classname=classname, savepath="{}".format("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection/{sample_token}.png".format(outputDirectory=outputDirectory,
+    visualize_sample_forecast(nusc, sample_token, gt, pred, classname=classname, dets_only=dets_only, savepath="{}".format("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection/{sample_token}.png".format(outputDirectory=outputDirectory,
                                                                                                                                                                                                                               experiment=experiment, 
                                                                                                                                                                                                                               dataset=dataset,
                                                                                                                                                                                                                               architecture=architecture, 

@@ -1,17 +1,17 @@
 import itertools
 import logging
 
-from numpy import true_divide
 from det3d.utils.config_tool import get_downsample_factor
 
 timesteps = 1
 DOUBLE_FLIP=False
-TWO_STAGE=False 
+TWO_STAGE=False
 REVERSE=False 
-CONSISTENCY=False
+SPARSE=False
 DENSE=False
-MULTI_CENTER=False
-GUIDED_MULTI_CENTER=False
+MAP=False
+
+sampler_type = "standard"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -60,10 +60,9 @@ model = dict(
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        consistency=CONSISTENCY,
+        sparse=SPARSE,
         dense=DENSE,
-        multi_center=MULTI_CENTER,
-        guided_multi_center=GUIDED_MULTI_CENTER,
+        map=MAP,
     ),
 )
 
@@ -75,7 +74,6 @@ assigner = dict(
     max_objs=500,
     min_radius=2,
 )
-
 
 train_cfg = dict(assigner=assigner)
 
@@ -107,28 +105,12 @@ db_sampler = dict(
     db_info_path= data_root + "/dbinfos_train_10sweeps_withvelo.pkl",
     sample_groups=[
         dict(car=2),
-        dict(truck=3),
-        dict(construction_vehicle=7),
-        dict(bus=4),
-        dict(trailer=6),
-        dict(barrier=2),
-        dict(motorcycle=6),
-        dict(bicycle=6),
         dict(pedestrian=2),
-        dict(traffic_cone=2),
     ],
     db_prep_steps=[
         dict(
             filter_by_min_num_points=dict(
                 car=5,
-                truck=5,
-                bus=5,
-                trailer=5,
-                construction_vehicle=5,
-                traffic_cone=5,
-                barrier=5,
-                motorcycle=5,
-                bicycle=5,
                 pedestrian=5,
             )
         ),
@@ -136,6 +118,7 @@ db_sampler = dict(
     ],
     global_random_rotation_range_per_object=[0, 0],
     rate=1.0,
+    sampler_type=sampler_type
 )
 train_preprocessor = dict(
     mode="train",
@@ -145,11 +128,13 @@ train_preprocessor = dict(
     global_translate_std=0.5,
     db_sampler=db_sampler,
     class_names=class_names,
+    sampler_type=sampler_type,
 )
 
 val_preprocessor = dict(
     mode="val",
     shuffle_points=False,
+    sampler_type=sampler_type
 )
 
 voxel_generator = dict(

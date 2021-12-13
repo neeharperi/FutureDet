@@ -86,6 +86,7 @@ def create_groundtruth_database(
         annos = sensor_data["lidar"]["annotations"]
         gt_boxes = annos["boxes"]
         names = annos["names"]
+        trajectories = annos["trajectory"]
 
         if dataset_class_name == 'WAYMO':
             # waymo dataset contains millions of objects and it is not possible to store
@@ -144,6 +145,7 @@ def create_groundtruth_database(
                 
                 db_info = {
                     "name": [names[t][i] for t in range(len(gt_boxes))],
+                    "trajectory": [trajectories[t][i] for t in range(len(gt_boxes))],
                     "path": db_dump_path,
                     "image_idx": image_idx,
                     "gt_idx": i,

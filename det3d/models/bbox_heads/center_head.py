@@ -216,20 +216,18 @@ class CenterHead(nn.Module):
         timesteps=1,
         two_stage=False,
         reverse=False,
-        consistency=False,
+        sparse=False,
         dense=False,
-        multi_center=False,
-        guided_multi_center=False
+        bev_map=False,
 
     ):
         super(CenterHead, self).__init__()
         
         self.two_stage = two_stage 
         self.reverse = reverse
-        self.consistency = consistency
-        self.dense=dense
-        self.multi_center=multi_center
-        self.guided_multi_center=guided_multi_center
+        self.sparse = sparse
+        self.dense = dense
+        self.bev_map = bev_map
 
         num_classes = [len(t["class_names"]) for t in tasks]
         self.class_names = [t["class_names"] for t in tasks]
@@ -238,25 +236,15 @@ class CenterHead(nn.Module):
 
         if 'vel' in common_heads and 'rvel' in common_heads and 'rot' in common_heads and 'rrot' in common_heads:
             self.box_n_dim = 13
-            if self.consistency:
-                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]))
-
-            else:
-                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]))
+            self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]))
             
             self.code_weights_two_stage_forecast = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
-            self.code_weights_multi_center_forecast = [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
         elif 'vel' in common_heads and 'rot' in common_heads:
             self.box_n_dim = 9
-
-            if consistency:
-                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([1, 1, 0, 0, 0, 0, 1, 1, 1, 1]))
-            else:
-                self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1]))
+            self.code_weights_forecast = list(np.array(self.code_weights) * np.array([0, 0, 0, 0, 0, 0, 1, 1, 0, 0]))
 
             self.code_weights_two_stage_forecast = [0, 0, 0, 0, 0, 0, 1, 1, 1, 1]
-            self.code_weights_multi_center_forecast = [1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
 
 
         self.weight = weight  # weight between hm loss and loc loss
@@ -288,31 +276,25 @@ class CenterHead(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-        if self.guided_multi_center:
-            self.alpha = nn.Parameter(0.2 * torch.ones(1), requires_grad = True)
-        
         self.tasks = nn.ModuleList()
         print("Use HM Bias: ", init_bias)
 
         if dcn_head:
             print("Use Deformable Convolution in the CenterHead!")
 
-        if self.dense or self.multi_center or self.guided_multi_center:
-            self.num_classes = (self.timesteps  // 2) * [1, 1]
+        if self.sparse:
+            self.num_classes = 2 * [1, 1]
+
+        if self.dense:
+            self.num_classes = self.timesteps * [1, 1]
 
         for num_cls in self.num_classes:
             heads = copy.deepcopy(common_heads)
 
             for head in heads.keys():
-                if (not self.multi_center and not self.guided_multi_center) and head in ["rot", "rrot", "vel", "rvel"]:
+                if not self.dense and head in ["vel", "rvel"]:
                     heads[head] = (timesteps * heads[head][0], heads[head][1])
                 
-                if self.consistency and head in ["reg"]:
-                    heads[head] = (timesteps * heads[head][0], heads[head][1])
-
-                if (self.multi_center or self.guided_multi_center) and head in ["reg"]:
-                    heads[head] = (2 * heads[head][0], heads[head][1])
-
             if not dcn_head:
                 heads.update(dict(hm=(num_cls, num_hm_conv)))
 
@@ -330,21 +312,8 @@ class CenterHead(nn.Module):
 
         x = self.shared_conv(x)
 
-        if self.guided_multi_center:
-            guided_attn = []
-            for i, task in enumerate(self.tasks):
-                if i in [0, 1]:
-                    ret = task(x)
-                    guided_attn.append(torch.sum(self._sigmoid(ret["hm"].clone()), axis=1))
-                    ret_dicts.append(ret)
-                else:
-                    hm = guided_attn[i % 2]
-                    excitation = x.mean(dim=1) * hm 
-                    x =  x + self.alpha * excitation.unsqueeze(1)
-
-        else: 
-            for task in self.tasks:
-                ret_dicts.append(task(x))
+        for task in self.tasks:
+            ret_dicts.append(task(x))
 
         return ret_dicts
 
@@ -364,67 +333,51 @@ class CenterHead(nn.Module):
                 hm_loss = torch.tensor(0).cuda()
             elif self.reverse:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][-1][task_id], example['ind'][-1][task_id], example['mask'][-1][task_id], example['cat'][-1][task_id])
-            elif self.dense or self.multi_center:
-                hm_loss = self.crit(preds_dict['hm'], example['hm'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['cat'][(self.timesteps // 2) * (task_id // 2)][task_id % 2])
+            elif self.sparse:
+                hm_loss = self.crit(preds_dict['hm'], example['hm'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['cat'][(self.timesteps - 1) * (task_id // 2)][task_id % 2])
+            elif self.dense:
+                hm_loss = self.crit(preds_dict['hm'], example['hm'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], example['mask'][task_id // 2][task_id % 2], example['cat'][task_id // 2][task_id % 2])
             else:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][0][task_id], example['ind'][0][task_id], example['mask'][0][task_id], example['cat'][0][task_id])
 
             #Generate Target Boxes
             if self.reverse:
                 target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)][::-1]
-            else:
-                if self.dense or self.multi_center:
-                    target_box = [example['anno_box'][i][task_id % 2] for i in range(self.timesteps)]
+            elif self.sparse:
+                target_box = [example['anno_box'][i][task_id % 2] for i in range(self.timesteps)][::-1]
+            elif self.dense:
+                target_box = [example['anno_box'][task_id // 2][task_id % 2] for i in range(self.timesteps)]
 
-                else:
-                    target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)]
+            else:
+                target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)]
 
             # reconstruct the anno_box from multiple reg heads
             if self.dataset in ['waymo', 'nuscenes']:
                 if 'vel' in preds_dict and 'rvel' in preds_dict and 'rot' in preds_dict and 'rrot' in preds_dict:
-
-                    if self.consistency:
-                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
-                                        preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::], preds_dict['rrot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    if self.dense:
+                        preds_dict['anno_box'] = torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                                preds_dict['vel'], preds_dict['rvel'], preds_dict['rot'], preds_dict['rrot']), dim=1)
+                    
                     else:
-                        if self.multi_center:
-                            preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
-                                                            preds_dict['vel'], reds_dict['rvel'], reds_dict['rot'], preds_dict['rrot']), dim=1) for i in range(2)]
-                
-                        else:
-                            preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
-                                            preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::], preds_dict['rrot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                        preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'], preds_dict['rrot']), dim=1) for i in range(self.timesteps)]
                     
                 elif 'vel' in preds_dict and 'rot' in preds_dict:
-                    if self.consistency:
-                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
-                                                            preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    if self.dense:
+                        preds_dict['anno_box'] = torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                                            preds_dict['vel'], preds_dict['rot']), dim=1)
+            
                     else:
-                        if self.multi_center:
-                            preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
-                                                            preds_dict['vel'], preds_dict['rot']), dim=1) for i in range(2)]
-                
-                        else:
-                            preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
-                                                                preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
-                    
+                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                                            preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot']), dim=1) for i in range(self.timesteps)]
+            
                    
                     target_box = [target_box[i][..., [0, 1, 2, 3, 4, 5, 6, 7, -2, -1]] for i in range(self.timesteps)]# remove vel target                       
 
                 else:
-                    if self.consistency:
-                        preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
-                                                            preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
-                    else:
-                        if self.multi_center or self.guided_multi_center:
-                            preds_dict['anno_box'] = [torch.cat((preds_dict['reg'][:,2*i:2*i+2,::], preds_dict['height'], preds_dict['dim'],
-                                                            preds_dict['rot']), dim=1) for i in range(2)]
-                        else:
-                            preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
-                                                                preds_dict['rot'][:,2*i:2*i+2,::]), dim=1) for i in range(self.timesteps)]
+                    preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
+                                                        preds_dict['rot']), dim=1) for i in range(self.timesteps)]
                     
-                        
-
                     target_box = [target_box[i][..., [0, 1, 2, 3, 4, 5, -2, -1]] for i in range(self.timesteps)]# remove vel target                       
             else:
                 raise NotImplementedError()
@@ -435,51 +388,39 @@ class CenterHead(nn.Module):
             if self.reverse:
                 box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][-1][task_id], example['ind'][-1][task_id], target_box[i]) for i in range(self.timesteps)]
 
-                if self.consistency:
-                    consistency_loss = [self.crit_forecast(preds_dict['anno_box'][i - 1], preds_dict['anno_box'][i], target_box[i - 1], target_box[i], example['mask'][-1][task_id], example['ind'][-1][task_id], reverse=self.reverse).sum() for i in range(1, self.timesteps)]
+            elif self.sparse:
+                box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], target_box[(self.timesteps - 1) * (task_id // 2)]) for i in range(self.timesteps)]
+
+            elif self.dense:
+                box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], target_box[task_id // 2])
 
             else:
-                if self.dense:
-                    box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[i]) for i in range(self.timesteps)]
+                box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
 
-                elif self.multi_center:
-                    box_loss = [self.crit_reg(preds_dict['anno_box'][0], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[(self.timesteps // 2) * (task_id // 2)]),
-                               self.crit_reg(preds_dict['anno_box'][1], example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps // 2) * (task_id // 2)][task_id % 2], target_box[0])]
-                
-                else:
-                    box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
-
-                if self.consistency:
-                    consistency_loss = [self.crit_forecast(preds_dict['anno_box'][i - 1], preds_dict['anno_box'][i], target_box[i - 1], target_box[i], example['mask'][0][task_id], example['ind'][0][task_id], reverse=self.reverse).sum() for i in range(1, self.timesteps)]
-            
+         
             loc_loss = []
             
             if self.two_stage:
                 for i in range(self.timesteps):
                     loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights_two_stage_forecast)).sum())
             else:
-                if self.multi_center:
-                    loc_loss.append((box_loss[0] * box_loss[0].new_tensor(self.code_weights)).sum()) 
-                    loc_loss.append((box_loss[1] * box_loss[1].new_tensor(self.code_weights_multi_center_forecast)).sum())
+                if self.dense:
+                    for i in range(self.timesteps):
+                        loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights)).sum())
+
                 else:
                     for i in range(self.timesteps):
                         loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights)).sum() if i == 0 else (box_loss[i] * box_loss[i].new_tensor(self.code_weights_forecast)).sum())
             
+            loss = hm_loss + self.weight * sum(loc_loss)
 
-            if self.consistency:
-                loss = hm_loss + self.weight * (sum(loc_loss) + sum(consistency_loss))
-
-            else:
-                loss = hm_loss + self.weight * sum(loc_loss)
-
-            if self.dense:
-                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2].float()))})
-
-            elif self.multi_center:
-                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(2)], 'num_positive': sum(sum(example['mask'][(self.timesteps // 2) * (task_id // 2)][task_id % 2].float()))})
-
+            if self.sparse:
+                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2].float()))})
+            elif self.dense:
+                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': box_loss.detach().cpu(), 'num_positive': sum(sum(example['mask'][task_id // 2][task_id % 2].float()))})
             else:
                 ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(sum([example['mask'][i][task_id].float() for i in range(self.timesteps)])))})
+            
             rets.append(ret)
 
         """convert batch-key to key-batch
@@ -546,22 +487,17 @@ class CenterHead(nn.Module):
             #batch_dim = torch.exp(preds_dict['dim'])
             batch_dim = torch.exp(preds_dict['dim'])
 
-            if not self.multi_center:
-                batch_rots = [preds_dict['rot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
-                batch_rotc = [preds_dict['rot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
-            else:
-                batch_rots = preds_dict['rot'][..., 0:1]
-                batch_rotc = preds_dict['rot'][..., 1:2]
+         
+            batch_rots = [preds_dict['rot'][..., 0:1] for i in range(self.timesteps)]
+            batch_rotc = [preds_dict['rot'][..., 1:2] for i in range(self.timesteps)]
+          
 
             if  'rrot' in preds_dict:
-                batch_rrots = [preds_dict['rrot'][...,2*i:2*i+2][..., 0:1] for i in range(self.timesteps)]
-                batch_rrotc = [preds_dict['rrot'][...,2*i:2*i+2][..., 1:2] for i in range(self.timesteps)]
+                batch_rrots = [preds_dict['rrot'][..., 0:1] for i in range(self.timesteps)]
+                batch_rrotc = [preds_dict['rrot'][..., 1:2] for i in range(self.timesteps)]
             
-            if self.multi_center:
-                batch_reg = [preds_dict['reg'][...,2*i:2*i+2] for i in range(2)]
-            else:
-                batch_reg = preds_dict['reg']
-
+           
+            batch_reg = preds_dict['reg']
             batch_hei = preds_dict['height']
 
             if double_flip:
@@ -596,30 +532,18 @@ class CenterHead(nn.Module):
                     batch_rotc[i] = batch_rotc[i].mean(dim=1)
                     batch_rots[i] = batch_rots[i].mean(dim=1)
 
-            if not self.multi_center:
-                batch_rot = [torch.atan2(batch_rots[i], batch_rotc[i]) for i in range(self.timesteps)]
-            else:
-                batch_rot = torch.atan2(batch_rots, batch_rotc)
-
+            batch_rot = torch.atan2(batch_rots, batch_rotc)
+           
             if 'rrot' in preds_dict:
-                batch_rrot = [torch.atan2(batch_rrots[i], batch_rrotc[i]) for i in range(self.timesteps)]
+                batch_rrot = torch.atan2(batch_rrots, batch_rrotc)
 
             batch, H, W, num_cls = batch_hm.size()
-            
-            if self.multi_center:
-                batch_reg = [batch_reg[i].reshape(batch, H*W, 2) for i in range(2)]
-            else:
-                batch_reg = batch_reg.reshape(batch, H*W, 2)
-            
+            batch_reg = batch_reg.reshape(batch, H*W, 2)
             batch_hei = batch_hei.reshape(batch, H*W, 1)
-
-            if not self.multi_center:
-                batch_rot = [batch_rot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
-            else:
-                batch_rot = batch_rot.reshape(batch, H*W, 1)
+            batch_rot = batch_rot.reshape(batch, H*W, 1)
 
             if 'rrot' in preds_dict:
-                batch_rrot = [batch_rrot[i].reshape(batch, H*W, 1) for i in range(self.timesteps)]
+                batch_rrot = batch_rrot.reshape(batch, H*W, 1)
 
             batch_dim = batch_dim.reshape(batch, H*W, 3)
             batch_hm = batch_hm.reshape(batch, H*W, num_cls)
@@ -628,24 +552,13 @@ class CenterHead(nn.Module):
             ys = ys.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
             xs = xs.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
 
-            if self.multi_center:
-                xmcs, ymcs = [], []
-                for i in range(2):
-                    xmcs.append(xs.view(batch, -1, 1) + batch_reg[i][:, :, 0:1])
-                    ymcs.append(ys.view(batch, -1, 1) + batch_reg[i][:, :, 1:2])
+            
+            xs = xs.view(batch, -1, 1) + batch_reg[:, :, 0:1]
+            ys = ys.view(batch, -1, 1) + batch_reg[:, :, 1:2]
 
-                    xmcs[i] = xmcs[i] * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
-                    ymcs[i] = ymcs[i] * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
-
-                xs = xmcs
-                ys = ymcs
-            else:
-                xs = xs.view(batch, -1, 1) + batch_reg[:, :, 0:1]
-                ys = ys.view(batch, -1, 1) + batch_reg[:, :, 1:2]
-
-                xs = xs * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
-                ys = ys * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
-                
+            xs = xs * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
+            ys = ys * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
+            
             if 'rvel' in preds_dict:
                 batch_rvel = [preds_dict['rvel'][...,2*i:2*i+2] for i in range(self.timesteps)]
 
@@ -660,93 +573,60 @@ class CenterHead(nn.Module):
                     batch_rvel[i] = batch_rvel[i].mean(dim=1)
                 
                 batch_rvel = [batch_rvel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
-                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rvel[i], batch_rot[i], batch_rrot[i]], dim=2) for i in range(self.timesteps)]
+                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rvel[i], batch_rot, batch_rrot], dim=2) for i in range(self.timesteps)]
             
             elif 'vel' in preds_dict:
-                if not self.multi_center:
-                    batch_vel = [preds_dict['vel'][...,2*i:2*i+2] for i in range(self.timesteps)]
+                batch_vel = [preds_dict['vel'][...,2*i:2*i+2] for i in range(self.timesteps)]
 
-                    if double_flip:
-                        for i in range(self.timesteps):
-                            # flip vy
-                            batch_vel[i][:, 1, ..., 1] *= -1
-                            # flip vx
-                            batch_vel[i][:, 2, ..., 0] *= -1
+                if double_flip:
+                    for i in range(self.timesteps):
+                        # flip vy
+                        batch_vel[i][:, 1, ..., 1] *= -1
+                        # flip vx
+                        batch_vel[i][:, 2, ..., 0] *= -1
 
-                            batch_vel[i][:, 3] *= -1
-                            
-                            batch_vel[i] = batch_vel[i].mean(dim=1)
+                        batch_vel[i][:, 3] *= -1
+                        
+                        batch_vel[i] = batch_vel[i].mean(dim=1)
 
-                    batch_vel = [batch_vel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
+                batch_vel = [batch_vel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
 
-          
-                    batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rot[i]], dim=2) for i in range(self.timesteps)]
-                else:
-                    batch_vel = preds_dict['vel']
-                    batch_vel = batch_vel.reshape(batch, H*W, 2)
-                    if self.multi_center:
-                        batch_box_preds = [torch.cat([xs[i], ys[i], batch_hei, batch_dim, batch_vel, batch_rot], dim=2) for i in range(2)]
-                    else:
-                        batch_box_preds = torch.cat([xs, ys, batch_hei, batch_dim, batch_vel, batch_rot], dim=2)    
+        
+                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rot], dim=2) for i in range(self.timesteps)]
+
             else: 
-                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_rot[i]], dim=2) for i in range(self.timesteps)]
+                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_rot], dim=2) for i in range(self.timesteps)]
 
             metas.append(meta_list)
 
             if test_cfg.get('per_class_nms', False):
                 pass 
             else:
-                if not self.multi_center:
-                    rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(self.timesteps)]) 
-                else:
-                    rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(2)])
-
+                rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(self.timesteps)]) 
+    
         ret_forecast_list = []
-        if not self.multi_center:
-            for t in range(self.timesteps):
-                # Merge branches results
-                ret_list = []
-                num_samples = len(rets[0][0])
+        for t in range(self.timesteps):
+            # Merge branches results
+            ret_list = []
+            num_samples = len(rets[0][0])
 
-                for i in range(num_samples):
-                    ret = {}
-                    for k in rets[0][0][i].keys():
-                        if k in ["box3d_lidar", "scores"]:
-                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-                        elif k in ["label_preds"]:
-                            flag = 0
-                            for j, num_class in enumerate(self.num_classes):
-                                rets[j][t][i][k] += flag
-                                flag += num_class
-                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-                    
-                    ret['metadata'] = metas[0][i]
-                    ret_list.append(ret)
+            for i in range(num_samples):
+                ret = {}
+                for k in rets[0][0][i].keys():
+                    if k in ["box3d_lidar", "scores"]:
+                        ret[k] = torch.cat([ret[t][i][k] for ret in rets])
+                    elif k in ["label_preds"]:
+                        flag = 0
+                        for j, num_class in enumerate(self.num_classes):
+                            rets[j][t][i][k] += flag
+                            flag += num_class
+                        ret[k] = torch.cat([ret[t][i][k] for ret in rets])
+                
+                ret['metadata'] = metas[0][i]
+                ret_list.append(ret)
 
-                ret_forecast_list.append(ret_list)
-        else:
-            for t in range(2):
-                # Merge branches results
-                ret_list = []
-                num_samples = len(rets[0][0])
-
-                for i in range(num_samples):
-                    ret = {}
-                   
-                    for k in rets[0][0][i].keys():
-                        if k in ["box3d_lidar", "scores"]:
-                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-                        elif k in ["label_preds"]:
-                            flag = 0
-                            for j, num_class in enumerate(self.num_classes):
-                                rets[j][t][i][k] += flag
-                                flag += num_class
-                            ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-
-                    ret['metadata'] = metas[0][i]
-                    ret_list.append(ret)
-
-                ret_forecast_list.append(ret_list)
+            ret_forecast_list.append(ret_list)
+        
         return ret_forecast_list #timestamps, num_samples, ...
 
     @torch.no_grad()

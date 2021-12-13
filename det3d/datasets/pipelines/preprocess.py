@@ -60,6 +60,7 @@ class Preprocess(object):
                 self.db_sampler = None 
                 
             self.npoints = cfg.get("npoints", -1)
+            self.sampler_type = cfg.sampler_type
 
         self.no_augmentation = cfg.get('no_augmentation', False)
 
@@ -82,6 +83,7 @@ class Preprocess(object):
             gt_dict = {
                 "gt_boxes": anno_dict["boxes"],
                 "gt_names": [np.array(box).reshape(-1) for box in anno_dict["names"]],
+                "gt_trajectory": [np.array(box).reshape(-1) for box in anno_dict["trajectory"]],
             }
 
         if self.mode == "train" and not self.no_augmentation:
@@ -100,13 +102,15 @@ class Preprocess(object):
                     res["metadata"]["image_prefix"],
                     gt_dict["gt_boxes"][0],
                     gt_dict["gt_names"][0],
+                    gt_dict["gt_trajectory"][0],
                     res["metadata"]["num_point_features"],
                     False,
                     gt_group_ids=None,
                     calib=None,
-                    road_planes=None
+                    road_planes=None,
+                    sampler_type=self.sampler_type
                 )
-
+                
                 if sampled_dict is not None:
                     sampled_gt_names = sampled_dict["gt_names"]
                     sampled_gt_boxes = sampled_dict["gt_boxes"]
@@ -376,7 +380,8 @@ class AssignLabel(object):
                                 gt_dict['gt_boxes'][i][idx][k][5]
                         w, l = w / voxel_size[0] / self.out_size_factor, l / voxel_size[1] / self.out_size_factor
                         if w > 0 and l > 0:
-                            radius = gaussian_radius((l, w), min_overlap=self.gaussian_overlap)
+                            vel_norm = np.linalg.norm(gt_dict['gt_boxes'][i][idx][k][6:8])
+                            radius = min(max(1, vel_norm * (1 + i) / 2), 4) * gaussian_radius((l, w), min_overlap=self.gaussian_overlap)
                             radius = max(self._min_radius, int(radius))
 
                             # be really careful for the coordinate system of your box annotation. 
@@ -447,7 +452,6 @@ class AssignLabel(object):
                 gt_boxes_and_cls[:num_obj] = boxes_and_cls
 
                 example.update({'gt_boxes_and_cls': gt_boxes_and_cls})
-
                 example.update({'hm': hms, 'anno_box': anno_boxs, 'ind': inds, 'mask': masks, 'cat': cats})
             else:
                 pass

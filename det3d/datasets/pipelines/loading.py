@@ -185,8 +185,8 @@ class LoadPointCloudAnnotations(object):
             gt_boxes = info["gt_boxes"].astype(np.float32)
             gt_boxes[np.isnan(gt_boxes)] = 0
 
-            boxes, names, tokens, rtokens, velocity, rvelocity, time = [], [], [], [], [], [], []
-            
+            boxes, names, tokens, rtokens, velocity, rvelocity, trajectory = [], [], [], [], [], [], []
+
             for i in range(res["metadata"]["timesteps"]):
                 try:
                     boxes.append(gt_boxes[:,i,:])
@@ -195,6 +195,7 @@ class LoadPointCloudAnnotations(object):
                     rtokens.append(info["gt_boxes_rtoken"][:,i])
                     velocity.append(info["gt_boxes_velocity"][:,i,:].astype(np.float32))
                     rvelocity.append(info["gt_boxes_rvelocity"][:,i,:].astype(np.float32))
+                    trajectory.append(info["gt_trajectory"][:,i])
 
                 except:
                     print("No Annotations in Scene")
@@ -204,6 +205,7 @@ class LoadPointCloudAnnotations(object):
                     rtokens.append(info["gt_boxes_rtoken"])
                     velocity.append(info["gt_boxes_velocity"].astype(np.float32))
                     rvelocity.append(info["gt_boxes_rvelocity"].astype(np.float32))
+                    trajectory.append(info["gt_trajectory"])
 
 
             res["lidar"]["annotations"] = {
@@ -212,7 +214,8 @@ class LoadPointCloudAnnotations(object):
                 "tokens": tokens,
                 "rtokens": rtokens,
                 "velocities": velocity,
-                "rvelocities" : rvelocity
+                "rvelocities" : rvelocity,
+                "trajectory" : trajectory
             }
 
         elif res["type"] == 'WaymoDataset' and "gt_boxes" in info:

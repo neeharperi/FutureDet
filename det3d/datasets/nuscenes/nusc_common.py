@@ -10,13 +10,15 @@ from tqdm import tqdm
 from pyquaternion import Quaternion
 
 from itertools import tee
+from copy import deepcopy
 
 try:
     from nuscenes import NuScenes
     from nuscenes.utils import splits
-    from nuscenes.utils.data_classes import Box
+    from nuscenes.utils.data_classes import Box, LidarPointCloud
     from nuscenes.eval.detection.config import config_factory
     from nuscenes.eval.detection.evaluate import NuScenesEval
+    from nuscenes.eval.detection.render import visualize_sample
 except:
     print("nuScenes devkit not Found!")
 
@@ -303,25 +305,24 @@ def center_distance(gt_box, pred_box) -> float:
     :param pred_box: Predicted sample.
     :return: L2 distance.
     """
-    return np.linalg.norm(np.array(pred_box[:2]) - np.array(gt_box[:2]))
+    return np.linalg.norm(np.array(pred_box.center[:2]) - np.array(gt_box.center[:2]))
 
+def trajectory(nusc, boxes, time, timesteps=7):
+    target = boxes[-1]
+    
+    static_forecast = deepcopy(boxes[0])
 
-def displacement(nusc, velocity, time):
-    disp = np.zeros(2)
-    for t in time:
-        disp += t * np.array(velocity)
-
-    return disp
-
-def trajectory(nusc, box, time, thresh : float = 0.5) -> float:
-    target = box[-1].center
-    static_forecast = box[0].center
-    linear_forecast = box[0].center + np.array(list(displacement(nusc, box[0].velocity[:2], time)) + [0])
-
-    if center_distance(target, static_forecast) < thresh:
+    linear_forecast = deepcopy(boxes[0])
+    vel = linear_forecast.velocity[:2]
+    disp = np.sum(list(map(lambda x: np.array(list(vel) + [0]) * x, time)), axis=0)
+    linear_forecast.center = linear_forecast.center + disp
+    
+    if center_distance(target, static_forecast) < max(target.wlh[0], target.wlh[1]):
         return "static"
-    elif center_distance(target, linear_forecast) < thresh:
+
+    elif center_distance(target, linear_forecast) < max(target.wlh[0], target.wlh[1]):
         return "linear"
+
     else:
         return "nonlinear"
 
@@ -335,7 +336,6 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
         tracklet_box = []
         tracklet_annotation = []
         tracklet_trajectory = []
-        tracklet_timesteps = [0]
 
         token = nusc.sample[sample_tokens.index(annotation["sample_token"])]["data"]["LIDAR_TOP"]
         sd_record = nusc.get("sample_data", token)
@@ -344,7 +344,6 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
 
         pannotation = annotation
         for i in range(timesteps):
-
             box = Box(center = annotation["translation"],
                       size = ref_box.wlh,
                       orientation = Quaternion(annotation["rotation"]),
@@ -373,7 +372,7 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
         
         tokens = [b["sample_token"] for b in tracklet_annotation]
         time = [get_time(nusc, src, dst) for src, dst in window(tokens, 2)]
-        tracklet_trajectory = trajectory(nusc, tracklet_box, time)
+        tracklet_trajectory = trajectory(nusc, tracklet_box, time, timesteps)
 
         forecast_boxes.append(tracklet_box)
         forecast_annotations.append(tracklet_annotation)
@@ -381,7 +380,103 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
 
     return forecast_boxes, forecast_annotations, forecast_trajectory
 
-def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10, filter_zero=True, timesteps=5):
+def xyz_histogram(points, 
+                  meters_max=50,
+                  pixels_per_meter=2,
+                  hist_max_per_pixel=25,
+                  zbins=np.linspace(-2, 1, 4),
+                  hist_normalize=False):
+    assert(points.shape[-1] >= 3)
+    assert(points.shape[0] > points.shape[1])
+    meters_total = meters_max * 2
+    pixels_total = meters_total * pixels_per_meter
+    xbins = np.linspace(-meters_max, meters_max, pixels_total + 1, endpoint=True)
+    ybins = xbins
+    # The first left bin edge must match the last right bin edge.
+    assert(np.isclose(xbins[0], -1 * xbins[-1]))
+    assert(np.isclose(ybins[0], -1 * ybins[-1]))
+    
+    hist = np.histogramdd(points[..., :3], bins=(xbins, ybins, zbins), normed=False)[0]
+
+    # Clip histogram 
+    hist[hist > hist_max_per_pixel] = hist_max_per_pixel
+
+    # Normalize histogram by the maximum number of points in a bin we care about.
+    if hist_normalize:
+        overhead_splat = hist / hist_max_per_pixel
+    else:
+        overhead_splat = hist
+    return overhead_splat, xbins, ybins, zbins
+
+def get_mask_from_scene_token(nusc, sample_token):
+    return nusc.get('map', nusc.get('log', nusc.get('scene', nusc.get('sample', sample_token)['scene_token'])['log_token'])['map_token'])['mask']
+
+def process_mask(nusc, x, t, ang, sample_token):
+    mask = get_mask_from_scene_token(nusc, sample_token)
+    xx, yy = np.meshgrid(x, x)
+    points = np.stack((xx, yy),axis=-1).reshape(-1, 2)
+    c = np.cos(ang)
+    s = np.sin(ang)
+    R = np.array([[c, -s], [s, c]])
+    points_r = np.dot(R, points.T).T+t[:2]
+    bools = mask.is_on_mask(points_r[:,0].ravel(), points_r[:,1].ravel())
+    return bools.reshape(xx.shape)
+
+def get_mask(nusc, pointcloud, translation, angle, sample_token):
+    BEV, xbins, ybins, zbins = xyz_histogram(pointcloud,
+                                                50, #LIDAR METERS MAX
+                                                2, #LIDAR PIXELS PER METER
+                                                50, #LIDAR HIST MAX PER PIXEL
+                                                zbins=np.array([-3.,   0.0, 1., 2.,  3., 10.]), #ZBINS
+                                                hist_normalize=True) #HIST NORMALIZE
+    cellwidth = xbins[1] - xbins[0]
+    mask = process_mask(nusc, (xbins + cellwidth/2)[:-1], translation, angle, sample_token)
+    
+    #mask = np.flipud(mask)
+    BEV = np.concatenate((BEV, mask[...,None]), axis=-1)
+
+    return BEV, mask
+
+def read_file(path, tries=2, num_point_feature=4, painted=False):
+    if painted:
+        dir_path = os.path.join(*path.split('/')[:-2], 'painted_'+path.split('/')[-2])
+        painted_path = os.path.join(dir_path, path.split('/')[-1]+'.npy')
+        points =  np.load(painted_path)
+        points = points[:, [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]] # remove ring_index from features 
+    else:
+        points = np.fromfile(path, dtype=np.float32).reshape(-1, 5)[:, :num_point_feature]
+
+    return points
+
+
+def remove_close(points, radius: float) -> None:
+    """
+    Removes point too close within a certain radius from origin.
+    :param radius: Radius below which points are removed.
+    """
+    x_filt = np.abs(points[0, :]) < radius
+    y_filt = np.abs(points[1, :]) < radius
+    not_close = np.logical_not(np.logical_and(x_filt, y_filt))
+    points = points[:, not_close]
+    return points
+
+
+def read_sweep(sweep, painted=False):
+    min_distance = 1.0
+    points_sweep = read_file(str(sweep["lidar_path"]), painted=painted).T
+    points_sweep = remove_close(points_sweep, min_distance)
+
+    nbr_points = points_sweep.shape[1]
+    if sweep["transform_matrix"] is not None:
+        points_sweep[:3, :] = sweep["transform_matrix"].dot(
+            np.vstack((points_sweep[:3, :], np.ones(nbr_points)))
+        )[:3, :]
+    curr_times = sweep["time_lag"] * np.ones((1, points_sweep.shape[1]))
+
+    return points_sweep.T, curr_times.T
+    
+
+def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20, filter_zero=True, timesteps=7):
     from nuscenes.utils.geometry_utils import transform_matrix
     
     train_nusc_infos = []
@@ -430,8 +525,10 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
             "timestamp": ref_time,
         }
 
+
         sample_data_token = sample["data"][chan]
         curr_sd_rec = nusc.get("sample_data", sample_data_token)
+
         sweeps = []
         while len(sweeps) < nsweeps - 1:
             if curr_sd_rec["prev"] == "":
@@ -487,6 +584,17 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=10,
                 sweeps.append(sweep)
 
         info["sweeps"] = sweeps
+
+        pointcloud, _ = read_sweep(info["sweeps"][0])
+        sample_token = ref_sd_rec["sample_token"]
+        translation = ref_pose_rec['translation']
+        rot = np.dot(Quaternion(ref_pose_rec['rotation']).rotation_matrix, np.array([1, 0, 0]))
+        angle = np.arctan2(rot[1], rot[0])
+
+        BEV, mask = get_mask(nusc, pointcloud, translation, angle, sample_token)
+        visualize_sample(nusc, sample_token, None, None, 20, 0.1, 50, True, "/home/ubuntu/Workspace/CenterForecast/{}.png".format(sample_token))
+        import imageio; imageio.imwrite("mask.png", mask.astype(int))
+        import pdb; pdb.set_trace()
 
         assert (len(info["sweeps"]) == nsweeps - 1), f"sweep {curr_sd_rec['token']} only has {len(info['sweeps'])} sweeps, you should duplicate to sweep num {nsweeps-1}"
         """ read from api """
@@ -584,7 +692,7 @@ def quaternion_yaw(q: Quaternion) -> float:
     return yaw
 
 
-def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainval_forecast", nsweeps=10, filter_zero=True, timesteps=1):
+def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainval_forecast", nsweeps=20, filter_zero=True, timesteps=7):
     nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
     available_vers = ["v1.0-trainval", "v1.0-test", "v1.0-mini"]
     assert version in available_vers

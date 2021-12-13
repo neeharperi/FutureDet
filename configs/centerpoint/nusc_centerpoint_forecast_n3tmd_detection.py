@@ -2,18 +2,20 @@ import itertools
 import logging
 
 from det3d.utils.config_tool import get_downsample_factor
+
 timesteps = 7
 DOUBLE_FLIP=False
-TWO_STAGE=False 
-REVERSE=False
-CONSISTENCY=False
+TWO_STAGE=False
+REVERSE=False 
+SPARSE=False
 DENSE=True
-MULTI_CENTER=False
-GUIDED_MULTI_CENTER=True
+MAP=True
+
+sampler_type = "trajectory"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
-    dict(num_class=1, class_names=["pedestrian"]),
+    dict(num_class=2, class_names=["pedestrian"]),
 ]
 
 class_names = list(itertools.chain(*[t["class_names"] for t in tasks]))
@@ -58,10 +60,9 @@ model = dict(
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        consistency = CONSISTENCY,
+        sparse=SPARSE,
         dense=DENSE,
-        multi_center=MULTI_CENTER,
-        guided_multi_center=GUIDED_MULTI_CENTER,
+        map=MAP,
     ),
 )
 
@@ -73,7 +74,6 @@ assigner = dict(
     max_objs=500,
     min_radius=2,
 )
-
 
 train_cfg = dict(assigner=assigner)
 
@@ -118,6 +118,7 @@ db_sampler = dict(
     ],
     global_random_rotation_range_per_object=[0, 0],
     rate=1.0,
+    sampler_type=sampler_type
 )
 train_preprocessor = dict(
     mode="train",
@@ -127,11 +128,13 @@ train_preprocessor = dict(
     global_translate_std=0.5,
     db_sampler=db_sampler,
     class_names=class_names,
+    sampler_type=sampler_type,
 )
 
 val_preprocessor = dict(
     mode="val",
     shuffle_points=False,
+    sampler_type=sampler_type
 )
 
 voxel_generator = dict(

@@ -2,18 +2,20 @@ import itertools
 import logging
 
 from det3d.utils.config_tool import get_downsample_factor
+
 timesteps = 7
 DOUBLE_FLIP=False
-TWO_STAGE=False 
-REVERSE=False
-CONSISTENCY=False
+TWO_STAGE=False
+REVERSE=False 
+SPARSE=False
 DENSE=False
-MULTI_CENTER=False
-GUIDED_MULTI_CENTER=False
+BEV_MAP=False
+
+sampler_type = "trajectory"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
-    dict(num_class=1, class_names=["pedestrian"]),
+    dict(num_class=2, class_names=["pedestrian"]),
 ]
 
 class_names = list(itertools.chain(*[t["class_names"] for t in tasks]))
@@ -51,17 +53,16 @@ model = dict(
         tasks=tasks,
         dataset='nuscenes',
         weight=0.25,
-        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0, 1.0],
+        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
         common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'vel': (2, 2)},
         share_conv_channel=64,
         dcn_head=False,
         timesteps=timesteps,
         two_stage=TWO_STAGE,
         reverse=REVERSE,
-        consistency = CONSISTENCY,
+        sparse=SPARSE,
         dense=DENSE,
-        multi_center=MULTI_CENTER,
-        guided_multi_center=GUIDED_MULTI_CENTER,
+        bev_map=BEV_MAP,
     ),
 )
 
@@ -73,7 +74,6 @@ assigner = dict(
     max_objs=500,
     min_radius=2,
 )
-
 
 train_cfg = dict(assigner=assigner)
 
@@ -96,17 +96,29 @@ test_cfg = dict(
 
 # dataset settings
 dataset_type = "NuScenesDataset"
-nsweeps = 10
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
+nsweeps = 20
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
+
+if sampler_type == "standard":
+    sample_group=[
+        dict(car=2),
+        dict(pedestrian=2),
+    ]
+else:
+    sample_group=[
+        dict(static_car=2),
+        dict(static_pedestrian=2),
+        dict(linear_car=4),
+        dict(linear_pedestrian=2),
+        dict(nonlinear_car=6),
+        dict(nonlinear_pedestrian=4),
+    ]
 
 db_sampler = dict(
     type="GT-AUG",
     enable=False,
-    db_info_path= data_root + "/dbinfos_train_10sweeps_withvelo.pkl",
-    sample_groups=[
-        dict(car=2),
-        dict(pedestrian=2),
-    ],
+    db_info_path= data_root + "/dbinfos_train_20sweeps_withvelo.pkl",
+    sample_groups=sample_group,
     db_prep_steps=[
         dict(
             filter_by_min_num_points=dict(
@@ -118,6 +130,7 @@ db_sampler = dict(
     ],
     global_random_rotation_range_per_object=[0, 0],
     rate=1.0,
+    sampler_type=sampler_type
 )
 train_preprocessor = dict(
     mode="train",
@@ -127,11 +140,13 @@ train_preprocessor = dict(
     global_translate_std=0.5,
     db_sampler=db_sampler,
     class_names=class_names,
+    sampler_type=sampler_type,
 )
 
 val_preprocessor = dict(
     mode="val",
     shuffle_points=False,
+    sampler_type=sampler_type
 )
 
 voxel_generator = dict(
@@ -161,9 +176,9 @@ test_pipeline = [
     dict(type="Reformat", double_flip=DOUBLE_FLIP),
 ]
 
-train_anno = data_root + "/infos_train_10sweeps_withvelo_filter_True.pkl"
-val_anno = data_root + "/infos_val_10sweeps_withvelo_filter_True.pkl"
-test_anno = data_root + "/infos_test_10sweeps_withvelo_filter_True.pkl"
+train_anno = data_root + "/infos_train_20sweeps_withvelo_filter_True.pkl"
+val_anno = data_root + "/infos_val_20sweeps_withvelo_filter_True.pkl"
+test_anno = data_root + "/infos_test_20sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,

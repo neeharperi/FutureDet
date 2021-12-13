@@ -34,6 +34,7 @@ def gaussian_radius(det_size, min_overlap=0.5):
     c3  = (min_overlap - 1) * width * height
     sq3 = np.sqrt(b3 ** 2 - 4 * a3 * c3)
     r3  = (b3 + sq3) / 2
+    
     return min(r1, r2, r3)
 
 def gaussian2D(shape, sigma=1):
