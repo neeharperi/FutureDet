@@ -36,7 +36,7 @@ class VoxelNet(SingleStageDetector):
         num_points_in_voxel = example["num_points"]
         num_voxels = example["num_voxels"]
         batch_size = len(num_voxels)
-    
+
         data = dict(
             features=voxels,
             num_voxels=num_points_in_voxel,
@@ -45,8 +45,10 @@ class VoxelNet(SingleStageDetector):
             input_shape=example["shape"][0],
         )
 
+        bev_map = example["bev_map"][0].float()
+        
         x, _ = self.extract_feat(data)
-        preds = self.bbox_head(x)
+        preds = self.bbox_head(x, bev_map)
 
         if return_loss:
             return self.bbox_head.loss(example, preds)

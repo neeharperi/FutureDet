@@ -11,7 +11,7 @@ SPARSE=False
 DENSE=False
 BEV_MAP=False
 
-sampler_type = "trajectory"
+sampler_type = "standard"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -97,7 +97,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 20
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
 
 if sampler_type == "standard":
     sample_group=[
@@ -182,7 +182,7 @@ test_anno = data_root + "/infos_test_20sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=0,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         root_path=data_root,
@@ -240,7 +240,7 @@ log_config = dict(
 )
 # yapf:enable
 # runtime settings
-total_epochs = 20
+total_epochs = 30
 device_ids = range(8)
 dist_params = dict(backend="nccl", init_method="env://")
 log_level = "INFO"

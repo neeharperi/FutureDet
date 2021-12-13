@@ -154,6 +154,7 @@ def collate_kitti(batch_list, samples_per_gpu=1):
             ret[key] = res
         elif key == 'gt_boxes_and_cls':
             ret[key] = torch.tensor(np.stack(elems, axis=0))
+     
         else:
             ret[key] = np.stack(elems, axis=0)
 
@@ -228,7 +229,7 @@ def collate_kitti_multi(batch_list, samples_per_gpu=1):
 
             ret[key] = res_forecast
 
-        elif key == 'gt_boxes_and_cls':
+        elif key in ['gt_boxes_and_cls', 'bev_map']:
             ret[key] = []
             for i in range(len(elems[0])):
                 el = []

@@ -269,13 +269,21 @@ class CenterHead(nn.Module):
         )
 
         # a shared convolution 
-        self.shared_conv = nn.Sequential(
-            nn.Conv2d(in_channels, share_conv_channel,
-            kernel_size=3, padding=1, bias=True),
-            nn.BatchNorm2d(share_conv_channel),
-            nn.ReLU(inplace=True)
-        )
 
+        if self.bev_map:
+            self.shared_conv = nn.Sequential(
+                nn.Conv2d(in_channels + 5, share_conv_channel,
+                kernel_size=3, padding=1, bias=True),
+                nn.BatchNorm2d(share_conv_channel),
+                nn.ReLU(inplace=True)
+            )
+        else:
+            self.shared_conv = nn.Sequential(
+                nn.Conv2d(in_channels, share_conv_channel,
+                kernel_size=3, padding=1, bias=True),
+                nn.BatchNorm2d(share_conv_channel),
+                nn.ReLU(inplace=True)
+            )
         self.tasks = nn.ModuleList()
         print("Use HM Bias: ", init_bias)
 
@@ -307,8 +315,11 @@ class CenterHead(nn.Module):
                 )
         logger.info("Finish CenterHead Initialization")
 
-    def forward(self, x, *kwargs):
+    def forward(self, x, bev_map=None, *kwargs):
         ret_dicts = []
+
+        if self.bev_map:
+            x = torch.cat([bev_map, x], axis=1)
 
         x = self.shared_conv(x)
 

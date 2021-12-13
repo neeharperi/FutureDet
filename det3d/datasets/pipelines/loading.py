@@ -138,7 +138,7 @@ class LoadPointCloudFromFile(object):
             res["lidar"]["points"] = points
             res["lidar"]["times"] = times
             res["lidar"]["combined"] = np.hstack([points, times])
-        
+            
         elif self.type == "WaymoDataset":
             path = info['path']
             nsweeps = res["lidar"]["nsweeps"]

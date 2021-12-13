@@ -34,7 +34,7 @@ import pdb
 
 def example_to_device(example, device, non_blocking=False) -> dict:
     example_torch = {}
-    float_names = ["voxels", "bev_map"]
+    float_names = ["voxels"]
     for k, v in example.items():
         if k in ["anchors", "anchors_mask", "reg_targets", "reg_weights", "labels", "hm",
                 "anno_box", "ind", "mask", 'cat']:
@@ -55,6 +55,7 @@ def example_to_device(example, device, non_blocking=False) -> dict:
             "cyv_coordinates",
             "cyv_num_points",
             "gt_boxes_and_cls"
+            "bev_map"
         ]:  
             try:
                 example_torch[k] = v.to(device, non_blocking=non_blocking)

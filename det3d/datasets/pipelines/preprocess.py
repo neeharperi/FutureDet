@@ -42,6 +42,35 @@ def forecast_voxelization(output):
 
     return voxels, coordinates, num_points
 
+def z_offset(points, 
+                  meters_max=45,
+                  pixels_per_meter=2,
+                  hist_max_per_pixel=50,
+                  zbins=np.array([-3.,   0.0, 1., 2.,  3., 10.]),
+                  hist_normalize=True):
+    assert(points.shape[-1] >= 3)
+    assert(points.shape[0] > points.shape[1])
+    meters_total = meters_max * 2
+    pixels_total = meters_total * pixels_per_meter
+    xbins = np.linspace(-meters_max, meters_max, pixels_total + 1, endpoint=True)
+    ybins = xbins
+    # The first left bin edge must match the last right bin edge.
+    assert(np.isclose(xbins[0], -1 * xbins[-1]))
+    assert(np.isclose(ybins[0], -1 * ybins[-1]))
+    
+    hist = np.histogramdd(points[..., :3], bins=(xbins, ybins, zbins), normed=False)[0]
+
+    # Clip histogram 
+    hist[hist > hist_max_per_pixel] = hist_max_per_pixel
+
+    # Normalize histogram by the maximum number of points in a bin we care about.
+    if hist_normalize:
+        overhead_splat = hist / hist_max_per_pixel
+    else:
+        overhead_splat = hist
+
+    return overhead_splat, xbins, ybins, zbins
+
 @PIPELINES.register_module
 class Preprocess(object):
     def __init__(self, cfg=None, **kwargs):
@@ -113,7 +142,9 @@ class Preprocess(object):
                 
                 if sampled_dict is not None:
                     sampled_gt_names = sampled_dict["gt_names"]
+                    sampled_gt_trajectory = sampled_dict["gt_trajectory"]
                     sampled_gt_boxes = sampled_dict["gt_boxes"]
+
                     sampled_points = sampled_dict["points"]
                     sampled_gt_masks = sampled_dict["gt_masks"]
                     
@@ -125,11 +156,13 @@ class Preprocess(object):
                                 sampled_gt_boxes[j][-6:] = sampled_dict["gt_forecast"][j][0]
 
                         gt_dict["gt_names"][i] = np.concatenate([gt_dict["gt_names"][i], sampled_gt_names], axis=0)
+                        gt_dict["gt_trajectory"][i] = np.concatenate([gt_dict["gt_trajectory"][i], sampled_gt_trajectory], axis=0)
+
                         gt_dict["gt_boxes"][i] = np.concatenate([gt_dict["gt_boxes"][i], sampled_gt_boxes])
                         gt_boxes_mask[i] = np.concatenate([gt_boxes_mask[i], sampled_gt_masks], axis=0)
 
                     points = np.concatenate([sampled_points, points], axis=0)
-
+            
             _dict_select(gt_dict, gt_boxes_mask)
 
             gt_classes = [np.array([self.class_names.index(n) + 1 for n in gt_dict["gt_names"][i]], dtype=np.int32,) for i in range(len(gt_dict["gt_boxes"]))]
@@ -152,6 +185,9 @@ class Preprocess(object):
             rng.shuffle(points)
         
         res["lidar"]["points"] = points
+
+        bev_map, _, _, _, = z_offset(points)
+        res["lidar"]["bev_map"] = bev_map.transpose(2, 0, 1)
 
         if self.mode == "train":
             res["lidar"]["annotations"] = gt_dict
@@ -298,6 +334,8 @@ class AssignLabel(object):
         else:
             length = len(res["lidar"]["annotations"]["boxes"])
 
+        bev_map = res["lidar"]["bev_map"]
+
         for i in range(length):
             example = {}
 
@@ -425,6 +463,7 @@ class AssignLabel(object):
                                 np.array(vx), np.array(vy), np.sin(rot), np.cos(rot)), axis=None)
                             else:
                                 raise NotImplementedError("Only Support Waymo and nuScene for Now")
+                    
 
                     hms.append(hm)
                     anno_boxs.append(anno_box)
@@ -450,12 +489,12 @@ class AssignLabel(object):
                 # x, y, z, w, l, h, rotation_y, velocity_x, velocity_y, class_name
                 boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
                 gt_boxes_and_cls[:num_obj] = boxes_and_cls
-
-                example.update({'gt_boxes_and_cls': gt_boxes_and_cls})
+        
+                example.update({'gt_boxes_and_cls': gt_boxes_and_cls, "bev_map": bev_map})
                 example.update({'hm': hms, 'anno_box': anno_boxs, 'ind': inds, 'mask': masks, 'cat': cats})
             else:
                 pass
-            
+
             example_forecast.append(example)
 
         ex = {k : [] for k in example_forecast[0].keys()}

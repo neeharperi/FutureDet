@@ -419,32 +419,11 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
 
                 ret_boxes.append(forecast_boxes)
 
-        if forecast_mode == "velocity_dense_center":
-            ret_boxes = []
-            for trajectory_box in trajectory_boxes:
-                if trajectory_box[0].label not in [2, 3]:
-                    continue
-
-                forecast_boxes = [trajectory_box[0]]
-                forecast_boxes[0].label = forecast_boxes[0].label % 2
-                for i in range((forecast - 1) // 2):
-                    new_box = deepcopy(forecast_boxes[-1])
-                    new_box.center = new_box.center - time[i] * trajectory_box[i].velocity
-
-                    forecast_boxes.append(new_box)
-
-                for i in range((forecast - 1) // 2, forecast - 1):
-                    new_box = deepcopy(forecast_boxes[-1])
-                    new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
-
-                    forecast_boxes = [new_box] + forecast_boxes         
-
-                ret_boxes.append(forecast_boxes)
 
         if forecast_mode == "velocity_dense_reverse":
             ret_boxes = []
             for trajectory_box in trajectory_boxes:
-                if trajectory_box[0].label not in [4, 5]:
+                if trajectory_box[0].label not in [2, 3]:
                     continue
                 
                 forecast_boxes = [trajectory_box[0]]

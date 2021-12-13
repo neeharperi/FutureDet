@@ -3,15 +3,15 @@ import logging
 
 from det3d.utils.config_tool import get_downsample_factor
 
-timesteps = 1
+timesteps = 7
 DOUBLE_FLIP=False
 TWO_STAGE=False
 REVERSE=False 
 SPARSE=False
-DENSE=False
-BEV_MAP=False
+DENSE=True
+BEV_MAP=True
 
-sampler_type = "standard"
+sampler_type = "trajectory"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -97,7 +97,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 20
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
 
 if sampler_type == "standard":
     sample_group=[
