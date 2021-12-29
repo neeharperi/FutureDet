@@ -38,12 +38,12 @@ from nuscenes.nuscenes import NuScenes
 
 import pdb 
 
-def save_pred(pred, root):
-    with open(os.path.join(root, "prediction.pkl"), "wb") as f:
+def save_pred(pred, root, split, modelCheckPoint):
+    with open(os.path.join(root, "prediction_{}_{}.pkl".format(split, modelCheckPoint)), "wb") as f:
         pickle.dump(pred, f)
 
-def load_pred(root):
-    with open(os.path.join(root, "prediction.pkl"), "rb") as f:
+def load_pred(root, split, modelCheckPoint):
+    with open(os.path.join(root, "prediction_{}_{}.pkl".format(split, modelCheckPoint)), "rb") as f:
         pred = pickle.load(f)
         return pred 
 
@@ -85,10 +85,13 @@ def parse_args():
     parser.add_argument("--eval_only", action="store_true")
     parser.add_argument("--cohort_analysis", action="store_true")
     parser.add_argument("--jitter", action="store_true")
+    parser.add_argument("--association_oracle", action="store_true")
+
     parser.add_argument("--nms", action="store_true")
     parser.add_argument("--K", default=1, type=int)
     parser.add_argument("--split", default="val")
     parser.add_argument("--version", default="v1.0-trainval")
+    parser.add_argument("--modelCheckPoint", default="latest")
 
     args = parser.parse_args()
     if "LOCAL_RANK" not in os.environ:
@@ -211,22 +214,18 @@ def main():
                 outputs = batch_processor(
                     model, data_batch, train_mode=False, local_rank=args.local_rank,
                 )
-
-            for t, timestep in enumerate(outputs):
-                for output in timestep:
-                    token = output["metadata"]["token"]
-                    for k, v in output.items():
-                        if k not in ["metadata"]:
-                            output[k] = v.to(cpu_device)
-                    
-                    if token not in detections:
-                        detections[token] = []
-                    
-                    detections[token].append(output)
-                    
-                    # detections.update({token: output,})
-                    if args.local_rank == 0 and t == 0:
-                        prog_bar.update()
+            for output in outputs:
+                token = output["metadata"]["token"]
+                for k, v in output.items():
+                    if k not in [
+                        "metadata",
+                    ]:
+                        output[k] = v.to(cpu_device)
+                detections.update(
+                    {token: output,}
+                )
+                if args.local_rank == 0:
+                    prog_bar.update()
 
         synchronize()
 
@@ -244,13 +243,13 @@ def main():
         if not os.path.exists(args.work_dir):
             os.makedirs(args.work_dir)
         
-        save_pred(predictions, args.work_dir)
+        save_pred(predictions, args.work_dir, args.split, args.modelCheckPoint)
 
     if args.local_rank != 0:
         return
     
-    predictions = load_pred(args.work_dir)
-    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, nms=args.nms, K=args.K, split=args.split, version=args.version, eval_only=args.eval_only, jitter=args.jitter)
+    predictions = load_pred(args.work_dir, args.split, args.modelCheckPoint)
+    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, nms=args.nms, K=args.K, split=args.split, version=args.version, eval_only=args.eval_only, jitter=args.jitter, association_oracle=args.association_oracle)
 
     if result_dict is not None:
         for k, v in result_dict["results"].items():

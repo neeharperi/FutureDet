@@ -45,7 +45,7 @@ class VoxelNet(SingleStageDetector):
             input_shape=example["shape"][0],
         )
 
-        bev_map = example["bev_map"][0].float()
+        bev_map = torch.stack(example["bev_map"], dim=1).float()
         
         x, _ = self.extract_feat(data)
         preds = self.bbox_head(x, bev_map)

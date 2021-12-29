@@ -334,8 +334,6 @@ class AssignLabel(object):
         else:
             length = len(res["lidar"]["annotations"]["boxes"])
 
-        bev_map = res["lidar"]["bev_map"]
-
         for i in range(length):
             example = {}
 
@@ -490,7 +488,7 @@ class AssignLabel(object):
                 boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
                 gt_boxes_and_cls[:num_obj] = boxes_and_cls
         
-                example.update({'gt_boxes_and_cls': gt_boxes_and_cls, "bev_map": bev_map})
+                example.update({'gt_boxes_and_cls': gt_boxes_and_cls})
                 example.update({'hm': hms, 'anno_box': anno_boxs, 'ind': inds, 'mask': masks, 'cat': cats})
             else:
                 pass

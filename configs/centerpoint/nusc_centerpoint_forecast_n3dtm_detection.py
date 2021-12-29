@@ -15,7 +15,7 @@ sampler_type = "trajectory"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
-    dict(num_class=2, class_names=["pedestrian"]),
+    #dict(num_class=2, class_names=["pedestrian"]),
 ]
 
 class_names = list(itertools.chain(*[t["class_names"] for t in tasks]))
@@ -97,21 +97,21 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 20
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
 
 if sampler_type == "standard":
     sample_group=[
         dict(car=2),
-        dict(pedestrian=2),
+        #dict(pedestrian=2),
     ]
 else:
     sample_group=[
         dict(static_car=2),
-        dict(static_pedestrian=2),
+        #dict(static_pedestrian=2),
         dict(linear_car=4),
-        dict(linear_pedestrian=2),
+        #dict(linear_pedestrian=2),
         dict(nonlinear_car=6),
-        dict(nonlinear_pedestrian=4),
+        #dict(nonlinear_pedestrian=4),
     ]
 
 db_sampler = dict(
@@ -123,7 +123,7 @@ db_sampler = dict(
         dict(
             filter_by_min_num_points=dict(
                 car=5,
-                pedestrian=5,
+                #pedestrian=5,
             )
         ),
         dict(filter_by_difficulty=[-1],),
@@ -240,7 +240,7 @@ log_config = dict(
 )
 # yapf:enable
 # runtime settings
-total_epochs = 30
+total_epochs = 20
 device_ids = range(8)
 dist_params = dict(backend="nccl", init_method="env://")
 log_level = "INFO"

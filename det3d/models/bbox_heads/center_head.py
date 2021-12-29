@@ -219,7 +219,6 @@ class CenterHead(nn.Module):
         sparse=False,
         dense=False,
         bev_map=False,
-
     ):
         super(CenterHead, self).__init__()
         
@@ -228,6 +227,12 @@ class CenterHead(nn.Module):
         self.sparse = sparse
         self.dense = dense
         self.bev_map = bev_map
+        self.target_timesteps = 7
+
+        if not self.reverse and not self.sparse and not self.dense:
+            self.standard = True
+        else:
+            self.standard = False 
 
         num_classes = [len(t["class_names"]) for t in tasks]
         self.class_names = [t["class_names"] for t in tasks]
@@ -291,17 +296,19 @@ class CenterHead(nn.Module):
             print("Use Deformable Convolution in the CenterHead!")
 
         if self.sparse:
-            self.num_classes = 2 * [1, 1]
+            #self.num_classes = 2 * [1, 1]
+            self.num_classes = 2 * [1]
 
         if self.dense:
-            self.num_classes = self.timesteps * [1, 1]
+            #self.num_classes = self.timesteps * [1, 1]
+            self.num_classes = self.timesteps * [1]
 
         for num_cls in self.num_classes:
             heads = copy.deepcopy(common_heads)
 
             for head in heads.keys():
                 if not self.dense and head in ["vel", "rvel"]:
-                    heads[head] = (timesteps * heads[head][0], heads[head][1])
+                    heads[head] = (self.timesteps * heads[head][0], heads[head][1])
                 
             if not dcn_head:
                 heads.update(dict(hm=(num_cls, num_hm_conv)))
@@ -345,9 +352,11 @@ class CenterHead(nn.Module):
             elif self.reverse:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][-1][task_id], example['ind'][-1][task_id], example['mask'][-1][task_id], example['cat'][-1][task_id])
             elif self.sparse:
-                hm_loss = self.crit(preds_dict['hm'], example['hm'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['cat'][(self.timesteps - 1) * (task_id // 2)][task_id % 2])
+                #hm_loss = self.crit(preds_dict['hm'], example['hm'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['cat'][(self.timesteps - 1) * (task_id // 2)][task_id % 2])
+                hm_loss = self.crit(preds_dict['hm'], example['hm'][(self.timesteps - 1) * (task_id)][0], example['ind'][(self.timesteps - 1) * (task_id)][0], example['mask'][(self.timesteps - 1) * (task_id)][0], example['cat'][(self.timesteps - 1) * (task_id)][0])
             elif self.dense:
-                hm_loss = self.crit(preds_dict['hm'], example['hm'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], example['mask'][task_id // 2][task_id % 2], example['cat'][task_id // 2][task_id % 2])
+                #hm_loss = self.crit(preds_dict['hm'], example['hm'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], example['mask'][task_id // 2][task_id % 2], example['cat'][task_id // 2][task_id % 2])
+                hm_loss = self.crit(preds_dict['hm'], example['hm'][task_id][0], example['ind'][task_id][0], example['mask'][task_id][0], example['cat'][task_id][0])
             else:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][0][task_id], example['ind'][0][task_id], example['mask'][0][task_id], example['cat'][0][task_id])
 
@@ -355,10 +364,15 @@ class CenterHead(nn.Module):
             if self.reverse:
                 target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)][::-1]
             elif self.sparse:
-                target_box = [example['anno_box'][i][task_id % 2] for i in range(self.timesteps)][::-1]
+                if task_id == 0:
+                    #target_box = [example['anno_box'][i][task_id % 2] for i in range(self.timesteps)]
+                    target_box = [example['anno_box'][i][0] for i in range(self.timesteps)]
+                else:
+                    #target_box = [example['anno_box'][i][task_id % 2] for i in range(self.timesteps)][::-1]
+                    target_box = [example['anno_box'][i][0] for i in range(self.timesteps)][::-1]
             elif self.dense:
-                target_box = [example['anno_box'][task_id // 2][task_id % 2] for i in range(self.timesteps)]
-
+                #target_box = [example['anno_box'][task_id // 2][task_id % 2] for i in range(self.timesteps)]
+                target_box = [example['anno_box'][task_id][0] for i in range(self.timesteps)]
             else:
                 target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)]
 
@@ -400,10 +414,12 @@ class CenterHead(nn.Module):
                 box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][-1][task_id], example['ind'][-1][task_id], target_box[i]) for i in range(self.timesteps)]
 
             elif self.sparse:
-                box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], target_box[(self.timesteps - 1) * (task_id // 2)]) for i in range(self.timesteps)]
+                #box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], example['ind'][(self.timesteps - 1) * (task_id // 2)][task_id % 2], target_box[(self.timesteps - 1) * (task_id // 2)]) for i in range(self.timesteps)]
+                box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][(self.timesteps - 1) * (task_id)][0], example['ind'][(self.timesteps - 1) * (task_id)][0], target_box[(self.timesteps - 1) * (task_id)]) for i in range(self.timesteps)]
 
             elif self.dense:
-                box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], target_box[task_id // 2])
+                #box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], target_box[task_id // 2])
+                box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id][0], example['ind'][task_id][0], target_box[task_id])
 
             else:
                 box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
@@ -426,9 +442,13 @@ class CenterHead(nn.Module):
             loss = hm_loss + self.weight * sum(loc_loss)
 
             if self.sparse:
-                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2].float()))})
+                #ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2].float()))})
+                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps - 1) * (task_id)][0].float()))})
+
             elif self.dense:
-                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': box_loss.detach().cpu(), 'num_positive': sum(sum(example['mask'][task_id // 2][task_id % 2].float()))})
+                #ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': box_loss.detach().cpu(), 'num_positive': sum(sum(example['mask'][task_id // 2][task_id % 2].float()))})
+                ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': box_loss.detach().cpu(), 'num_positive': sum(sum(example['mask'][task_id][0].float()))})
+
             else:
                 ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(sum([example['mask'][i][task_id].float() for i in range(self.timesteps)])))})
             
@@ -451,7 +471,7 @@ class CenterHead(nn.Module):
         # get loss info
         rets = []
         metas = []
-        double_flip = test_cfg.get('double_flip', False)
+
         post_center_range = test_cfg.post_center_limit_range
         if len(post_center_range) > 0:
             post_center_range = torch.tensor(
@@ -460,102 +480,70 @@ class CenterHead(nn.Module):
                 device=preds_dicts[0]['hm'].device,
             )
 
-        for task_id, preds_dict in enumerate(preds_dicts):
+        forecast_preds_dicts = []
+
+        if self.standard or self.reverse:
+            preds_dict = preds_dicts[0]
+            vels = [preds_dict['vel'][:,2*i:2*i+2] for i in range(self.timesteps)]
+            
+            if len(vels) == 1:
+                vels = self.target_timesteps * vels
+
+            self.num_classes = [1] * self.target_timesteps
+
+            for vel in vels:
+                preds_dict["vel"] = vel
+                forecast_preds_dicts.append(copy.deepcopy(preds_dict))
+
+        elif self.sparse:
+            forward_dict = preds_dicts[0]
+            reverse_dict = preds_dicts[1]
+
+            forward_vels = [forward_dict['vel'][:,2*i:2*i+2] for i in range(self.timesteps)]
+            reverse_vels = [reverse_dict['vel'][:,2*i:2*i+2] for i in range(self.timesteps)]
+
+            self.num_classes = [1, 1] * self.target_timesteps
+
+            for vel in forward_vels:
+                forward_dict["vel"] = vel
+                forecast_preds_dicts.append(copy.deepcopy(forward_dict))
+            
+            for vel in reverse_vels:
+                reverse_dict["vel"] = vel
+                forecast_preds_dicts.append(copy.deepcopy(reverse_dict))
+
+        else:
+            forecast_preds_dicts = preds_dicts
+
+        for task_id, preds_dict in enumerate(forecast_preds_dicts):
             # convert N C H W to N H W C 
             for key, val in preds_dict.items():
                 preds_dict[key] = val.permute(0, 2, 3, 1).contiguous()
 
             batch_size = preds_dict['hm'].shape[0]
-            
-            if double_flip:
-                assert batch_size % 4 == 0, print(batch_size)
-                batch_size = int(batch_size / 4)
-                for k in preds_dict.keys():
-                    # transform the prediction map back to their original coordinate befor flipping
-                    # the flipped predictions are ordered in a group of 4. The first one is the original pointcloud
-                    # the second one is X flip pointcloud(y=-y), the third one is Y flip pointcloud(x=-x), and the last one is 
-                    # X and Y flip pointcloud(x=-x, y=-y).
-                    # Also please note that pytorch's flip function is defined on higher dimensional space, so dims=[2] means that
-                    # it is flipping along the axis with H length(which is normaly the Y axis), however in our traditional word, it is flipping along
-                    # the X axis. The below flip follows pytorch's definition yflip(y=-y) xflip(x=-x)
-                    
-                    _, H, W, C = preds_dict[k].shape
-                    preds_dict[k] = preds_dict[k].reshape(int(batch_size), 4, H, W, C)
-                    preds_dict[k][:, 1] = torch.flip(preds_dict[k][:, 1], dims=[1]) 
-                    preds_dict[k][:, 2] = torch.flip(preds_dict[k][:, 2], dims=[2])
-                    preds_dict[k][:, 3] = torch.flip(preds_dict[k][:, 3], dims=[1, 2])
 
             if "metadata" not in example or len(example["metadata"]) == 0:
                 meta_list = [None] * batch_size
             else:
                 meta_list = example["metadata"]
-                if double_flip:
-                    meta_list = meta_list[:4*int(batch_size):4]
-
-            #batch_hm = torch.sigmoid(preds_dict['hm'])
+        
             batch_hm = torch.sigmoid(preds_dict['hm'])
-            
-            #batch_dim = torch.exp(preds_dict['dim'])
+
             batch_dim = torch.exp(preds_dict['dim'])
 
-         
-            batch_rots = [preds_dict['rot'][..., 0:1] for i in range(self.timesteps)]
-            batch_rotc = [preds_dict['rot'][..., 1:2] for i in range(self.timesteps)]
-          
-
-            if  'rrot' in preds_dict:
-                batch_rrots = [preds_dict['rrot'][..., 0:1] for i in range(self.timesteps)]
-                batch_rrotc = [preds_dict['rrot'][..., 1:2] for i in range(self.timesteps)]
-            
-           
+            batch_rots = preds_dict['rot'][..., 0:1]
+            batch_rotc = preds_dict['rot'][..., 1:2]
             batch_reg = preds_dict['reg']
             batch_hei = preds_dict['height']
 
-            if double_flip:
-                for i in range(self.timesteps):
-                    batch_hm[i] = batch_hm[i].mean(dim=1)
-                    batch_hei[i] = batch_hei[i].mean(dim=1)
-                    batch_dim[i] = batch_dim[i].mean(dim=1)
-
-                    # y = -y reg_y = 1-reg_y
-                    batch_reg[i][:, 1, ..., 1] = 1 - batch_reg[i][:, 1, ..., 1]
-                    batch_reg[i][:, 2, ..., 0] = 1 - batch_reg[i][:, 2, ..., 0]
-
-                    batch_reg[i][:, 3, ..., 0] = 1 - batch_reg[i][:, 3, ..., 0]
-                    batch_reg[i][:, 3, ..., 1] = 1 - batch_reg[i][:, 3, ..., 1]
-                    batch_reg[i] = batch_reg[i].mean(dim=1)
-
-                    # first yflip 
-                    # y = -y theta = pi -theta
-                    # sin(pi-theta) = sin(theta) cos(pi-theta) = -cos(theta)
-                    # batch_rots[:, 1] the same
-                    batch_rotc[i][:, 1] *= -1
-
-                    # then xflip x = -x theta = 2pi - theta
-                    # sin(2pi - theta) = -sin(theta) cos(2pi - theta) = cos(theta)
-                    # batch_rots[:, 2] the same
-                    batch_rots[i][:, 2] *= -1
-
-                    # double flip 
-                    batch_rots[i][:, 3] *= -1
-                    batch_rotc[i][:, 3] *= -1
-
-                    batch_rotc[i] = batch_rotc[i].mean(dim=1)
-                    batch_rots[i] = batch_rots[i].mean(dim=1)
-
             batch_rot = torch.atan2(batch_rots, batch_rotc)
-           
-            if 'rrot' in preds_dict:
-                batch_rrot = torch.atan2(batch_rrots, batch_rrotc)
 
             batch, H, W, num_cls = batch_hm.size()
+
             batch_reg = batch_reg.reshape(batch, H*W, 2)
             batch_hei = batch_hei.reshape(batch, H*W, 1)
+
             batch_rot = batch_rot.reshape(batch, H*W, 1)
-
-            if 'rrot' in preds_dict:
-                batch_rrot = batch_rrot.reshape(batch, H*W, 1)
-
             batch_dim = batch_dim.reshape(batch, H*W, 3)
             batch_hm = batch_hm.reshape(batch, H*W, num_cls)
 
@@ -563,82 +551,58 @@ class CenterHead(nn.Module):
             ys = ys.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
             xs = xs.view(1, H, W).repeat(batch, 1, 1).to(batch_hm)
 
-            
             xs = xs.view(batch, -1, 1) + batch_reg[:, :, 0:1]
             ys = ys.view(batch, -1, 1) + batch_reg[:, :, 1:2]
 
             xs = xs * test_cfg.out_size_factor * test_cfg.voxel_size[0] + test_cfg.pc_range[0]
             ys = ys * test_cfg.out_size_factor * test_cfg.voxel_size[1] + test_cfg.pc_range[1]
-            
+
             if 'rvel' in preds_dict:
-                batch_rvel = [preds_dict['rvel'][...,2*i:2*i+2] for i in range(self.timesteps)]
-
-                for i in range(self.timesteps):
-                    # flip vy
-                    batch_rvel[i][:, 1, ..., 1] *= -1
-                    # flip vx
-                    batch_rvel[i][:, 2, ..., 0] *= -1
-
-                    batch_rvel[i][:, 3] *= -1
-                    
-                    batch_rvel[i] = batch_rvel[i].mean(dim=1)
+                batch_vel = preds_dict['vel']
+                batch_vel = batch_vel.reshape(batch, H*W, 2)
                 
-                batch_rvel = [batch_rvel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
-                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rvel[i], batch_rot, batch_rrot], dim=2) for i in range(self.timesteps)]
+                batch_rvel = preds_dict['rvel']
+                batch_rvel = batch_rvel.reshape(batch, H*W, 2)
+                
+                batch_box_preds = torch.cat([xs, ys, batch_hei, batch_dim, batch_vel, batch_rvel, batch_rot], dim=2)
             
             elif 'vel' in preds_dict:
-                batch_vel = [preds_dict['vel'][...,2*i:2*i+2] for i in range(self.timesteps)]
-
-                if double_flip:
-                    for i in range(self.timesteps):
-                        # flip vy
-                        batch_vel[i][:, 1, ..., 1] *= -1
-                        # flip vx
-                        batch_vel[i][:, 2, ..., 0] *= -1
-
-                        batch_vel[i][:, 3] *= -1
-                        
-                        batch_vel[i] = batch_vel[i].mean(dim=1)
-
-                batch_vel = [batch_vel[i].reshape(batch, H*W, 2) for i in range(self.timesteps)]
-
-        
-                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_vel[i], batch_rot], dim=2) for i in range(self.timesteps)]
-
+                batch_vel = preds_dict['vel']
+                batch_vel = batch_vel.reshape(batch, H*W, 2)
+                
+                batch_box_preds = torch.cat([xs, ys, batch_hei, batch_dim, batch_vel, batch_rot], dim=2)
             else: 
-                batch_box_preds = [torch.cat([xs, ys, batch_hei, batch_dim, batch_rot], dim=2) for i in range(self.timesteps)]
+                batch_box_preds = torch.cat([xs, ys, batch_hei, batch_dim, batch_rot], dim=2)
 
             metas.append(meta_list)
 
             if test_cfg.get('per_class_nms', False):
                 pass 
             else:
-                rets.append([self.post_processing(batch_box_preds[i], batch_hm, test_cfg, post_center_range, task_id) for i in range(self.timesteps)]) 
-    
-        ret_forecast_list = []
-        for t in range(self.timesteps):
-            # Merge branches results
-            ret_list = []
-            num_samples = len(rets[0][0])
+                rets.append(self.post_processing(batch_box_preds, batch_hm, test_cfg, post_center_range, task_id)) 
 
-            for i in range(num_samples):
-                ret = {}
-                for k in rets[0][0][i].keys():
-                    if k in ["box3d_lidar", "scores"]:
-                        ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-                    elif k in ["label_preds"]:
-                        flag = 0
-                        for j, num_class in enumerate(self.num_classes):
-                            rets[j][t][i][k] += flag
-                            flag += num_class
-                        ret[k] = torch.cat([ret[t][i][k] for ret in rets])
-                
-                ret['metadata'] = metas[0][i]
-                ret_list.append(ret)
+        # Merge branches results
+        ret_list = []
+        num_samples = len(rets[0])
 
-            ret_forecast_list.append(ret_list)
-        
-        return ret_forecast_list #timestamps, num_samples, ...
+        ret_list = []
+        for i in range(num_samples):
+            ret = {}
+            for k in rets[0][i].keys():
+                if k in ["box3d_lidar", "scores"]:
+                    ret[k] = torch.cat([ret[i][k] for ret in rets])
+                elif k in ["label_preds"]:
+                    flag = 0
+                    for j, num_class in enumerate(self.num_classes):
+                        rets[j][i][k] += flag
+                        flag += num_class
+                    ret[k] = torch.cat([ret[i][k] for ret in rets])
+
+            ret['metadata'] = metas[0][i]
+            ret_list.append(ret)
+
+        return ret_list 
+
 
     @torch.no_grad()
     def post_processing(self, batch_box_preds, batch_hm, test_cfg, post_center_range, task_id):

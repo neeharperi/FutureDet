@@ -48,7 +48,6 @@ detection_dataFrame = { "CLASS" : [],
                         "FDE" : [],
                         "MR" : [],
                         "mFAP_MR" : [],
-                        "mAAP_MR" : [],
 #                        "RADE" : [],
 #                        "RFDE" : [],
 #                        "RMR" : []
@@ -90,7 +89,7 @@ parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument("--extractBox", action="store_true")
 parser.add_argument("--version", default="v1.0-trainval") #
 parser.add_argument("--split", default="val") #
-parser.add_argument("--modelCheckPoint", default="latest.pth")
+parser.add_argument("--modelCheckPoint", default="latest")
 parser.add_argument("--forecast", default=7)
 parser.add_argument("--tp_pct", default=0.6)
 parser.add_argument("--static_only", action="store_true")
@@ -98,6 +97,7 @@ parser.add_argument("--eval_only", action="store_true")
 parser.add_argument("--forecast_mode", default="velocity_forward")
 parser.add_argument("--cohort_analysis", action="store_true")
 parser.add_argument("--jitter", action="store_true")
+parser.add_argument("--association_oracle", action="store_true")
 parser.add_argument("--nms", action="store_true")
 parser.add_argument("--K", default=1)
 
@@ -121,6 +121,7 @@ cohort_analysis = args.cohort_analysis
 nms = args.nms
 K = args.K
 jitter = args.jitter
+association_oracle = args.association_oracle
 
 configPath = "{dataset}_{architecture}_{model}_detection.py".format(dataset=dataset,
                                                                     architecture=architecture,
@@ -137,7 +138,7 @@ track_dir = "models/{experiment}/{dataset}_{architecture}_{model}_tracking".form
                                                                                    dataset=dataset)
 print("Evaluating Detection Results for " + modelCheckPoint)
 
-os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --tp_pct {tp_pct} {static_only} {eval_only} {cohort_analysis} {nms} {jitter} --K {K} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
+os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint}.pth --modelCheckPoint {modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --tp_pct {tp_pct} {static_only} {eval_only} {cohort_analysis} {nms} {jitter} {association_oracle} --K {K} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
                                                                                                                                                                                     configPath=configPath, 
                                                                                                                                                                                     extractBox= "--extractBox" if extractBox else "", 
                                                                                                                                                                                     det_dir=det_dir, 
@@ -150,6 +151,7 @@ os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extr
                                                                                                                                                                                     static_only= "--static_only" if static_only else "",
                                                                                                                                                                                     cohort_analysis= "--cohort_analysis" if cohort_analysis else "",
                                                                                                                                                                                     jitter= "--jitter" if jitter else "",
+                                                                                                                                                                                    association_oracle= "--association_oracle" if association_oracle else "",
                                                                                                                                                                                     nms= "--nms" if nms else "",
                                                                                                                                                                                     split=split,
                                                                                                                                                                                     version=version,
@@ -178,7 +180,6 @@ for classname in detection_dataFrame["CLASS"]:
     detection_dataFrame["mAAR"].append(logFile["mean_dist_aars"][classname])
 
     detection_dataFrame["mFAP_MR"].append(logFile["mean_dist_faps_mr"][classname])
-    detection_dataFrame["mAAP_MR"].append(logFile["mean_dist_aaps_mr"][classname])
 
 classMetrics = logFile["label_tp_errors"]
 for metric in detection_metrics.keys():
@@ -190,7 +191,7 @@ detection_dataFrame = pd.DataFrame.from_dict(detection_dataFrame)
 if not os.path.isdir("results/" + experiment + "/" + model):
     os.makedirs("results/" + experiment + "/" + model)
 
-filename = "results/{experiment}/{model}/{dataset}_{architecture}_{model}_{forecast}_{forecast_mode}_tp{tp_pct}_K{K}_{cohort}{static_only}{nms}detection.csv".format(experiment=experiment, model=model, dataset=dataset, architecture=architecture, forecast="t{}".format(forecast), forecast_mode=forecast_mode, tp_pct=tp_pct, K=K, cohort="cohort_" if cohort_analysis else "", static_only = "static_" if static_only else "", nms = "nms_" if nms else "")
+filename = "results/{experiment}/{model}/{dataset}_{architecture}_{model}_{forecast}_{forecast_mode}_tp{tp_pct}_K{K}_{cohort}{static_only}{nms}{association_oracle}detection_{modelCheckPoint}.csv".format(experiment=experiment, model=model, dataset=dataset, architecture=architecture, forecast="t{}".format(forecast), forecast_mode=forecast_mode, tp_pct=tp_pct, K=K, cohort="cohort_" if cohort_analysis else "", static_only = "static_" if static_only else "", nms = "nms_" if nms else "", association_oracle = "oracle_" if association_oracle else "", modelCheckPoint=modelCheckPoint)
 detection_dataFrame.to_csv(filename, index=False)
 
 #########################################################################

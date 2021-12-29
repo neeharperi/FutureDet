@@ -647,7 +647,7 @@ def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainv
             pickle.dump(val_nusc_infos, f)
 
 
-def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, static_only, cohort_analysis, topK, root):
+def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, static_only, cohort_analysis, topK, root, association_oracle):
     # nusc = NuScenes(version=version, dataroot=str(root_path), verbose=True)
     cfg = config_factory(eval_version)
 
@@ -664,5 +664,6 @@ def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_p
         cohort_analysis=cohort_analysis,
         topK=topK,
         root=root,
+        association_oracle=association_oracle
     )
     metrics_summary = nusc_eval.main(plot_examples=10,cohort_analysis=cohort_analysis)

@@ -39,19 +39,9 @@ def center_distance(gt_box: EvalBox, pred_box: EvalBox) -> float:
     """
     return np.linalg.norm(np.array(pred_box.translation[:2]) - np.array(gt_box.translation[:2]))
 
-def trajectory(nusc, box: DetectionBox, timesteps=7) -> float:
-    target = box.forecast_boxes[-1]
-    static_forecast = box.forecast_boxes[0]
-    
-    if center_distance(target, static_forecast) < max(static_forecast["size"][0], static_forecast["size"][1]):
-        return "static"
-    else:
-        return "moving"
-
-
 parser = argparse.ArgumentParser()
-parser.add_argument('--experiment', default="Forecast")
-parser.add_argument('--model', default="forecast_n3d")
+parser.add_argument('--experiment', default="FutureDetection")
+parser.add_argument('--model', default="forecast_n3r")
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument('--dataset', default="nusc")
@@ -73,7 +63,7 @@ rootDirectory = args.rootDirectory
 outputDirectory = args.outputDirectory
 
 
-det_dir = "models/{experiment}/{dataset}_{architecture}_{model}_detection/infos_val_10sweeps_withvelo_filter_True.json".format(architecture=architecture,
+det_dir = "models/{experiment}/{dataset}_{architecture}_{model}_detection/infos_val_20sweeps_withvelo_filter_True.json".format(architecture=architecture,
                                                                                    experiment=experiment,
                                                                                    model=model,
                                                                                    dataset=dataset)
@@ -82,12 +72,12 @@ if not os.path.isdir("{outputDirectory}/{experiment}/{dataset}_{architecture}_{m
     os.makedirs("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection".format(outputDirectory=outputDirectory, experiment=experiment, dataset=dataset, architecture=architecture, model=model), exist_ok=True)
 
 
-cfg = detect_configs("detection_forecast")
+cfg = detect_configs("detection_forecast_cohort")
 
 if os.path.isfile(rootDirectory + "/nusc.pkl"):
     nusc = pickle.load(open(rootDirectory + "/nusc.pkl", "rb"))
 else:
-    nusc = NuScenes(version='v1.0-trainval', dataroot=rootDirectory, verbose=True)
+    nusc = NuScenes(version='v1.0-mini', dataroot=rootDirectory, verbose=True)
     pickle.dump(nusc, open(rootDirectory + "/nusc.pkl", "wb"))
 
 pred_boxes, meta = load_prediction(det_dir, cfg.max_boxes_per_sample, DetectionBox, verbose=True)
@@ -95,7 +85,7 @@ pred_boxes, meta = load_prediction(det_dir, cfg.max_boxes_per_sample, DetectionB
 if os.path.isfile(rootDirectory + "/gt.pkl"):
     gt_boxes = pickle.load(open(rootDirectory + "/gt.pkl", "rb"))
 else:
-    gt_boxes = load_gt(nusc, "val", DetectionBox, verbose=True, forecast=forecast)
+    gt_boxes = load_gt(nusc, "mini_val", DetectionBox, verbose=True, forecast=forecast)
     pickle.dump(gt_boxes, open(rootDirectory + "/gt.pkl", "wb"))
 
 classname = ["car"]
@@ -109,12 +99,45 @@ for sample_token in tqdm(gt_boxes.boxes.keys()):
 
     pred = pred_boxes.boxes[sample_token]
 
-    class_gt = [box for box in gt if box.detection_name in classname]
+    gt = [box for box in gt if box.detection_name in classname]
 
-    if len(class_gt) == 0:
+    if len(gt) == 0:
         continue
 
-    visualize_sample_forecast(nusc, sample_token, gt, pred, classname=classname, dets_only=dets_only, savepath="{}".format("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection/{sample_token}.png".format(outputDirectory=outputDirectory,
+    pred_boxes_list = [box for box in pred_boxes.all if box.detection_name in classname]
+    pred_confs = [box.detection_score for box in pred_boxes_list]
+    sortind = [i for (v, i) in sorted((v, i) for (i, v) in enumerate(pred_confs))][::-1]
+
+    match_count = 0
+    match_pred, match_gt = [], []
+    taken = set()  # Initially no gt bounding box is matched.
+    for ind in sortind:
+        pred_box = pred_boxes_list[ind]
+    
+        min_dist = np.inf
+        match_gt_idx = None
+
+        for gt_idx, gt_box in enumerate(gt_boxes[pred_boxes_list[ind].sample_token]):
+
+            # Find closest match among ground truth boxes
+            if not (pred_boxes_list[ind].sample_token, gt_idx) in taken:
+                this_distance = center_distance(gt_box, pred_box)
+                if this_distance < min_dist:
+                    min_dist = this_distance
+                    match_gt_idx = gt_idx
+
+        is_match = min_dist < 0.5
+        # If the closest match is close enough according to threshold we have a match!
+        if is_match:
+            taken.add((pred_boxes_list[ind].sample_token, match_gt_idx))
+            match_count += 1
+            mp = pred_boxes_list[ind]
+            mg = gt_boxes[pred_boxes_list[ind].sample_token][match_gt_idx]
+
+            match_pred.append(mp)
+            match_gt.append(mg)
+
+    visualize_sample_forecast(nusc, sample_token, match_gt, match_pred, classname=classname, dets_only=dets_only, savepath="{}".format("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection/{sample_token}.png".format(outputDirectory=outputDirectory,
                                                                                                                                                                                                                               experiment=experiment, 
                                                                                                                                                                                                                               dataset=dataset,
                                                                                                                                                                                                                               architecture=architecture, 
