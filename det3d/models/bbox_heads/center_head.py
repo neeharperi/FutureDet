@@ -341,6 +341,7 @@ class CenterHead(nn.Module):
 
     def loss(self, example, preds_dicts, **kwargs):
         rets = []
+        import pdb; pdb.set_trace()
         for task_id, preds_dict in enumerate(preds_dicts):
             # heatmap focal loss
             hm = self.num_classes[task_id]
@@ -371,8 +372,8 @@ class CenterHead(nn.Module):
                     #target_box = [example['anno_box'][i][task_id % 2] for i in range(self.timesteps)][::-1]
                     target_box = [example['anno_box'][i][0] for i in range(self.timesteps)][::-1]
             elif self.dense:
-                #target_box = [example['anno_box'][task_id // 2][task_id % 2] for i in range(self.timesteps)]
-                target_box = [example['anno_box'][task_id][0] for i in range(self.timesteps)]
+                #target_box = example['anno_box'][task_id // 2][task_id % 2]
+                target_box = example['anno_box'][task_id][0]
             else:
                 target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)]
 
@@ -392,12 +393,14 @@ class CenterHead(nn.Module):
                         preds_dict['anno_box'] = torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
                                                             preds_dict['vel'], preds_dict['rot']), dim=1)
             
+                        target_box = target_box[..., [0, 1, 2, 3, 4, 5, 6, 7, -2, -1]]                     
+
                     else:
                         preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
                                                             preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rot']), dim=1) for i in range(self.timesteps)]
             
                    
-                    target_box = [target_box[i][..., [0, 1, 2, 3, 4, 5, 6, 7, -2, -1]] for i in range(self.timesteps)]# remove vel target                       
+                        target_box = [target_box[i][..., [0, 1, 2, 3, 4, 5, 6, 7, -2, -1]] for i in range(self.timesteps)]# remove vel target                       
 
                 else:
                     preds_dict['anno_box'] = [torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
@@ -419,7 +422,7 @@ class CenterHead(nn.Module):
 
             elif self.dense:
                 #box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], target_box[task_id // 2])
-                box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id][0], example['ind'][task_id][0], target_box[task_id])
+                box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id][0], example['ind'][task_id][0], target_box)
 
             else:
                 box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
@@ -432,8 +435,7 @@ class CenterHead(nn.Module):
                     loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights_two_stage_forecast)).sum())
             else:
                 if self.dense:
-                    for i in range(self.timesteps):
-                        loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights)).sum())
+                    loc_loss.append((box_loss * box_loss.new_tensor(self.code_weights)).sum())
 
                 else:
                     for i in range(self.timesteps):

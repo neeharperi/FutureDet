@@ -310,6 +310,7 @@ class AssignLabel(object):
     def __init__(self, **kwargs):
         """Return CenterNet training labels like heatmap, height, offset"""
         assigner_cfg = kwargs["cfg"]
+        self.radius_mult = assigner_cfg.radius_mult
         self.out_size_factor = assigner_cfg.out_size_factor
         self.tasks = assigner_cfg.target_assigner.tasks
         self.gaussian_overlap = assigner_cfg.gaussian_overlap
@@ -417,7 +418,13 @@ class AssignLabel(object):
                         w, l = w / voxel_size[0] / self.out_size_factor, l / voxel_size[1] / self.out_size_factor
                         if w > 0 and l > 0:
                             vel_norm = np.linalg.norm(gt_dict['gt_boxes'][i][idx][k][6:8])
-                            radius = min(max(1, vel_norm * (1 + i) / 2), 4) * gaussian_radius((l, w), min_overlap=self.gaussian_overlap)
+
+                            if self.radius_mult:
+                                mult = min(max(1, vel_norm * (1 + i) / 2), 4)
+                            else:
+                                mult = 1.0
+
+                            radius = mult * gaussian_radius((l, w), min_overlap=self.gaussian_overlap)
                             radius = max(self._min_radius, int(radius))
 
                             # be really careful for the coordinate system of your box annotation. 

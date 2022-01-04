@@ -73,6 +73,7 @@ assigner = dict(
     gaussian_overlap=0.1,
     max_objs=500,
     min_radius=2,
+    radius_mult = False
 )
 
 train_cfg = dict(assigner=assigner)

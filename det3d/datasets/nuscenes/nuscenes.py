@@ -160,8 +160,22 @@ def get_token(scene_data, sample_data, sample_data_tokens, src_data_token, offse
     return dst_data_token
 
 def box_center(boxes):
-    center_box = np.array([box.center.tolist() for box in boxes]) 
+    center_box = np.array([box.center[:2].tolist() for box in boxes]) 
     return center_box
+
+def box_past_center(time, boxes):
+    center_box = np.array([(box.center[:2] - time * box.velocity[:2]).tolist() for box in boxes]) 
+    return center_box
+
+def box_future_center(time, boxes):
+    center_box = np.array([(box.center[:2] + time * box.velocity[:2]).tolist() for box in boxes]) 
+    return center_box
+
+def box_past(time, boxes):
+    for box in boxes:
+        box.center = box.center - time * box.velocity
+
+    return boxes
 
 def box_center_(boxes):
     center_box = np.array([box["translation"] for box in boxes]) 
@@ -198,6 +212,119 @@ def match_boxes(ret_boxes):
     
     return match_boxes
 
+def tracker(time, ret_boxes, past_boxes):
+    reverse_time = time[::-1]
+    reverse_past_boxes = past_boxes[::-1]
+    reverse_ret_boxes = ret_boxes[::-1]
+    trajectory = []
+
+    idx, dist = [], []
+    
+    for timesteps, tm in zip(window(reverse_ret_boxes, 2), reverse_time):
+        current, previous = timesteps
+        
+        curr = box_past_center(tm, current)
+        prev = box_center(previous)
+        
+        if len(curr) == 0 or len(prev) == 0:
+            continue 
+        
+        dist_mat = distance_matrix(curr, prev)
+        min_idx = np.argmin(dist_mat, axis=1)
+        min_dist = np.min(dist_mat, axis=1)
+        idx.append(min_idx)
+        dist.append(min_dist)
+    
+    if len(idx) != len(ret_boxes) - 1:
+        return []
+
+    trajectory_idxs = []
+    for i in range(idx[0].shape[0]):
+        trajectory_idx = [i]
+        void = False
+        for ind, dis in zip(idx, dist):
+            if dis[trajectory_idx[-1]] > 2:
+                void = True 
+
+            trajectory_idx.append(ind[trajectory_idx[-1]])
+
+        if not void:
+            trajectory_idxs.append(trajectory_idx)
+        
+    for idxs in trajectory_idxs:
+        forecast = []
+        for ind, boxes in zip(idxs, reverse_ret_boxes):
+            forecast.append(boxes[ind])
+
+        forecast = forecast[::-1]
+        trajectory.append(forecast)
+    ##########################################################################
+
+    idx, dist = [], []
+    for timesteps, tm in zip(window(ret_boxes, 2), time):
+        current, future = timesteps
+        
+        curr = box_future_center(tm, current)
+        futr = box_center(future)
+        
+        if len(curr) == 0 or len(futr) == 0:
+            continue 
+        
+        dist_mat = distance_matrix(curr, futr)
+        min_idx = np.argmin(dist_mat, axis=1)
+        min_dist = np.min(dist_mat, axis=1)
+        idx.append(min_idx)
+        dist.append(min_dist)
+    
+    if len(idx) != len(ret_boxes) - 1:
+        return []
+
+    trajectory_idxs = []
+    for i in range(idx[0].shape[0]):
+        trajectory_idx = [i]
+        void = False
+        for ind, dis in zip(idx, dist):
+            if dis[trajectory_idx[-1]] > 2:
+                void = True 
+
+            trajectory_idx.append(ind[trajectory_idx[-1]])
+
+        if not void:
+            trajectory_idxs.append(trajectory_idx)
+        
+    for idxs in trajectory_idxs:
+        forecast = []
+        for ind, boxes in zip(idxs, ret_boxes):
+            forecast.append(boxes[ind])
+
+        trajectory.append(forecast)
+    ##########################################################################
+    for idx in np.arange(len(ret_boxes[0])):
+        curr = ret_boxes[0][idx]
+        velocity = curr.velocity
+
+        forecast = [curr]
+        for t in time:
+            new_box = deepcopy(forecast[-1])
+            new_box.center = new_box.center + t * velocity
+            forecast.append(new_box)
+
+        trajectory.append(forecast)
+
+    for idx in np.arange(len(ret_boxes[-1])):
+        curr = ret_boxes[-1][idx]
+        velocity = curr.velocity
+
+        forecast = [curr]
+        for t in reverse_time:
+            new_box = deepcopy(forecast[-1])
+            new_box.center = new_box.center - t * velocity
+            forecast.append(new_box)
+
+        forecast = forecast[::-1]
+        trajectory.append(forecast)
+    
+    return trajectory
 
 def box_serialize(box, token, name, attr):
     ret = {"sample_token": token,
@@ -249,7 +376,7 @@ def multi_future(forecast_boxes):
                         continue 
 
             dist_mat = distance_matrix(pred_center, pred_center)
-            idxa, idxb = np.where(dist_mat < 1e-3)
+            idxa, idxb = np.where(dist_mat < 0.5)
 
             L = []
             for ida, idb in zip(idxa, idxb):
@@ -286,6 +413,24 @@ def multi_future(forecast_boxes):
 def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, jitter, K):
     ret_boxes, ret_tokens = [], []
 
+    for t in range(forecast):
+        dst_token =  get_token(scene_data, sample_data, sample_data_tokens, det_forecast["metadata"]["token"], t)
+        ret_tokens.append(dst_token)
+
+    time = []
+    stale = False
+    for src, dst in window(ret_tokens, 2):
+        elapse_time = get_time(nusc, src, dst)
+
+        if elapse_time == 0:
+            stale = True 
+
+        time.append(elapse_time)
+
+    if stale:
+        return [], ret_tokens
+
+
     if "sparse" in forecast_mode:
         for t in range(forecast):
             mask_forward = np.array(det_forecast["label_preds"] == t)
@@ -302,13 +447,39 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
             det_reverse = {"box3d_lidar" : box3d_reverse, "scores" : scores_reverse, "label_preds" : labels_reverse, "metadata" : det_forecast["metadata"]}
 
             boxes_forward = _second_det_to_nusc_box(det_forward)
-            boxes_forward = _lidar_nusc_box_to_global(nusc, boxes_forward, det["metadata"]["token"])
+            boxes_forward = _lidar_nusc_box_to_global(nusc, boxes_forward, det_forward["metadata"]["token"])
 
             boxes_reverse = _second_det_to_nusc_box(det_reverse)
-            boxes_reverse = _lidar_nusc_box_to_global(nusc, boxes_reverse, det["metadata"]["token"])
+            boxes_reverse = _lidar_nusc_box_to_global(nusc, boxes_reverse, det_reverse["metadata"]["token"])
 
-            dst_token =  get_token(scene_data, sample_data, sample_data_tokens, det["metadata"]["token"], t)
-            ret_boxes.append([boxes_forward, boxes_reverse]), ret_tokens.append(dst_token)
+            ret_boxes.append([boxes_forward, boxes_reverse])
+
+        if len(ret_boxes[0][0]) == 0:
+            return [], ret_tokens
+
+        if len(ret_boxes[1][0]) == 0:
+            return [], ret_tokens
+    
+    elif "dense" in forecast_mode:
+        past_boxes = []
+
+        for t, tm in zip(range(forecast), [0.5] + time):
+            mask = np.array(det_forecast["label_preds"] == t)
+            box3d = det_forecast["box3d_lidar"][mask]
+            scores = det_forecast["scores"][mask]
+            labels = det_forecast["label_preds"][mask]
+            det = {"box3d_lidar" : box3d, "scores" : scores, "label_preds" : labels, "metadata" : det_forecast["metadata"]}
+
+            boxes = _second_det_to_nusc_box(det)
+            pboxes = box_past(tm, deepcopy(boxes))
+            boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
+            pboxes = _lidar_nusc_box_to_global(nusc, pboxes, det["metadata"]["token"])
+
+            ret_boxes.append(boxes)
+            past_boxes.append(pboxes)
+
+        if len(ret_boxes[0]) == 0:
+            return [], ret_tokens
 
     else:
         for t in range(forecast):
@@ -321,11 +492,10 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
             boxes = _second_det_to_nusc_box(det)
             boxes = _lidar_nusc_box_to_global(nusc, boxes, det["metadata"]["token"])
 
-            dst_token =  get_token(scene_data, sample_data, sample_data_tokens, det["metadata"]["token"], t)
-            ret_boxes.append(boxes), ret_tokens.append(dst_token)
-        
-    if len(ret_boxes[0]) == 0:
-        return [], ret_tokens
+            ret_boxes.append(boxes)
+
+        if len(ret_boxes[0]) == 0:
+            return [], ret_tokens
 
     if forecast_mode in ["velocity_constant", "velocity_forward", "velocity_reverse"]:
         ret_boxes = match_boxes(ret_boxes)
@@ -338,35 +508,42 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
         reverse_box = match_boxes(reverse_box)
 
         ret_boxes = [[forward, reverse] for forward, reverse in zip(forward_box, reverse_box)]
-    
+
+    if "dense" not in forecast_mode: 
+        if "sparse" in forecast_mode:
+            forward_box = [boxes[0] for boxes in ret_boxes]
+            reverse_box = [boxes[1] for boxes in ret_boxes]
+
+            forward_trajectory_boxes = []
+            for j in range(len(forward_box[0])):
+                boxes = []      
+
+                for i in range(forecast):
+                    boxes.append(forward_box[i][j])
+
+                forward_trajectory_boxes.append(boxes)
+
+            reverse_trajectory_boxes = []
+            for j in range(len(reverse_box[0])):
+                boxes = []      
+
+                for i in range(forecast):
+                    boxes.append(reverse_box[i][j])
+
+                reverse_trajectory_boxes.append(boxes)
+
+            trajectory_boxes = [forward_trajectory_boxes, reverse_trajectory_boxes]
+        else:
+            trajectory_boxes = []
+            for j in range(len(ret_boxes[0])):
+                boxes = []      
+
+                for i in range(forecast):
+                    boxes.append(ret_boxes[i][j])
+
+                trajectory_boxes.append(boxes)
     else:
-        ret_boxes = tracker(ret_boxes) #TODO
-
-    
-    if "sparse" in forecast_mode:
-        pass #TODO
-    else:
-        trajectory_boxes = []
-        for j in range(len(ret_boxes[0])):
-            boxes = []      
-
-            for i in range(1, forecast):
-                boxes.append(ret_boxes[i][j])
-
-            trajectory_boxes.append(boxes)
-    
-    time = []
-    stale = False
-    for src, dst in window(ret_tokens, 2):
-        elapse_time = get_time(nusc, src, dst)
-
-        if elapse_time == 0:
-            stale = True 
-
-        time.append(elapse_time)
-
-    if stale:
-        return [], ret_tokens
+        forecast_boxes = tracker(time, ret_boxes, past_boxes)
 
     if forecast_mode in ["velocity_constant", "velocity_forward", "velocity_reverse"]:
         if forecast_mode == "velocity_reverse":
@@ -387,29 +564,144 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                 
             if forecast_mode == "velocity_reverse":
                 forecast_boxes = forecast_boxes[::-1]
-                
+
             ret_boxes.append(forecast_boxes)
 
-            if jitter:
-                for _ in range(K - 1):
-                    forecast_boxes = [trajectory_box[0]]
-                    for i in range(forecast - 1):
-                        vel_norm = np.linalg.norm(trajectory_box[i].velocity)
-                        new_box = deepcopy(forecast_boxes[-1])
-                        new_box.center = new_box.center + time[i] * np.random.normal(trajectory_box[i].velocity, np.array([vel_norm, vel_norm, vel_norm]))
-
-                        forecast_boxes.append(new_box)
-
-                    ret_boxes.append(forecast_boxes)
-
     elif forecast_mode in ["velocity_sparse_forward", "velocity_sparse_reverse"]:
-        pass 
+        if forecast_mode == "velocity_sparse_forward":
+            trajectory_boxes = trajectory_boxes[0]
+        else:
+            trajectory_boxes = trajectory_boxes[1]
+        
+        if forecast_mode == "velocity_sparse_reverse":
+            time = time[::-1]
+
+        ret_boxes = []
+        for trajectory_box in trajectory_boxes:
+            forecast_boxes = [trajectory_box[0]]
+            for i in range(forecast - 1):
+                new_box = deepcopy(forecast_boxes[-1])
+
+                if forecast_mode == "velocity_sparse_reverse":
+                    new_box.center = new_box.center - time[i] * trajectory_box[i].velocity
+                else:
+                    new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
+
+                forecast_boxes.append(new_box)
+                
+            if forecast_mode == "velocity_sparse_reverse":
+                forecast_boxes = forecast_boxes[::-1]
+
+            ret_boxes.append(forecast_boxes)
 
     elif forecast_mode == "velocity_sparse_match":
-        pass 
+        reverse_time = time[::-1]
+        curr_boxes = []
+        curr_box = []
+        for trajectory_box in trajectory_boxes[0]:
+            forecast_boxes = [trajectory_box[0]]
+            for i in range(forecast - 1):
+                new_box = deepcopy(forecast_boxes[-1])
+                new_box.center = new_box.center + time[i] * trajectory_box[i].velocity
+
+                forecast_boxes.append(new_box)
+                
+            curr_boxes.append(forecast_boxes)
+            curr_box.append(forecast_boxes[0])
+
+        forward_ret_boxes = deepcopy(ret_boxes)
+        
+        future_boxes = []
+        future_box = []
+        for trajectory_box in trajectory_boxes[1]:
+            forecast_boxes = [trajectory_box[0]]
+            for i in range(forecast - 1):
+                new_box = deepcopy(forecast_boxes[-1])
+                new_box.center = new_box.center - reverse_time[i] * trajectory_box[i].velocity
+            
+                forecast_boxes.append(new_box)
+                
+            forecast_boxes = forecast_boxes[::-1]
+            future_boxes.append(forecast_boxes)
+            future_box.append(forecast_boxes[0])
+
+        ret_boxes = []
+        curr_center = box_center(curr_box)
+        future_center = box_center(future_box) 
+        
+        if len(curr_center) == 0 or len(future_center) == 0:
+            return [], ret_tokens
+
+        dist_mat = distance_matrix(curr_center, future_center)
+        dist_idx = np.argmin(dist_mat, axis=0)
+        distance = np.min(dist_mat, axis=0)
+
+        for dist, idx, future in zip(distance, dist_idx, future_boxes):
+            curr = curr_boxes[idx]
+            if dist < 2:
+                new_traj = deepcopy([curr[0]] + future[1:])
+                ret_boxes.append(new_traj)
+
+        dist_idx = np.argmin(dist_mat, axis=1)
+        distance = np.min(dist_mat, axis=1)
+
+        for dist, idx, curr in zip(distance, dist_idx, curr_boxes):
+            future = future_boxes[idx]
+            if dist < 2:
+                new_traj = deepcopy(curr[:-1] + [future[-1]])
+        
+                ret_boxes.append(new_traj)
+
+        ###############################################
+        for idx in np.arange(len(curr_boxes)):
+            curr = curr_boxes[idx][0]
+            velocity = curr.velocity
+
+            forecast = [curr]
+            for t in time:
+                new_box = deepcopy(forecast[-1])
+                new_box.center = new_box.center + t * velocity
+                forecast.append(new_box)
+
+            ret_boxes.append(forecast)
+
+        for idx in np.arange(len(future_boxes)):
+            future = future_boxes[idx][-1]
+            velocity = future.velocity
+
+            forecast = [future]
+            for t in reverse_time:
+                new_box = deepcopy(forecast[-1])
+                new_box.center = new_box.center - t * velocity
+                forecast.append(new_box)
+        
+            forecast = forecast[::-1]
+            ret_boxes.append(forecast)
 
     elif forecast_mode == "velocity_dense":
-        pass 
+        ret_boxes = forecast_boxes 
+
+    else:
+        assert False, "Invalid Forecast Mode"
+
+    if jitter:
+        jitter_boxes = []
+        for trajectory_box in ret_boxes:
+            for _ in range(K - 1):
+                start_box = trajectory_box[0]
+                vel_norm = np.linalg.norm(start_box.velocity)
+                velocity = start_box.velocity
+
+                forecast_boxes = [start_box]
+                for i in range(forecast - 1):
+                    new_box = deepcopy(forecast_boxes[-1])
+                    new_box.center = new_box.center + time[i] * np.random.normal(velocity, np.array([vel_norm, vel_norm, vel_norm]))
+
+                    forecast_boxes.append(new_box)
+
+                jitter_boxes.append(forecast_boxes)
+        
+        ret_boxes = ret_boxes + jitter_boxes
 
     return ret_boxes, ret_tokens
 

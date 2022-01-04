@@ -73,6 +73,7 @@ assigner = dict(
     gaussian_overlap=0.1,
     max_objs=500,
     min_radius=2,
+    radius_mult = True
 )
 
 train_cfg = dict(assigner=assigner)
@@ -97,7 +98,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 20
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/mini_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
 
 if sampler_type == "standard":
     sample_group=[
@@ -182,7 +183,7 @@ test_anno = data_root + "/infos_test_20sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         root_path=data_root,
