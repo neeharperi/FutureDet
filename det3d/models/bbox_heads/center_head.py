@@ -76,12 +76,14 @@ class SepHead(nn.Module):
         bn=False,
         init_bias=-2.19,
         two_stage=False,
+        forecast_feature=False,
         **kwargs,
     ):
         super(SepHead, self).__init__(**kwargs)
 
         self.heads = heads 
         self.two_stage = two_stage
+        self.forecast_feature = forecast_feature
 
         if self.two_stage:
             if "vel" in self.heads and "rot" in self.heads:
@@ -98,6 +100,13 @@ class SepHead(nn.Module):
                     kernel_size=3, padding=1, bias=True),
                     nn.BatchNorm2d(head_conv),
                     nn.ReLU(inplace=True)
+                )
+
+        if self.forecast_feature:
+                self.forecast_feats = nn.Sequential(
+                    nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
+                    nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
+                    nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
                 )
 
         for head in self.heads:
@@ -127,9 +136,13 @@ class SepHead(nn.Module):
         
 
     def forward(self, x):
-        ret_dict = dict()        
-        for head in self.heads:
+        ret_dict = dict()     
 
+        if self.forecast_feature:
+            x = self.forecast_feats(x)
+            ret_dict["feats"] = x
+
+        for head in self.heads:
             if self.two_stage:
                 if head in ["vel", "rot"]:
                     shared_forecast = self.forecast_conv(x)
@@ -219,6 +232,7 @@ class CenterHead(nn.Module):
         sparse=False,
         dense=False,
         bev_map=False,
+        forecast_feature=False,
     ):
         super(CenterHead, self).__init__()
         
@@ -227,6 +241,7 @@ class CenterHead(nn.Module):
         self.sparse = sparse
         self.dense = dense
         self.bev_map = bev_map
+        self.forecast_feature = forecast_feature
         self.target_timesteps = 7
 
         if not self.reverse and not self.sparse and not self.dense:
@@ -314,7 +329,7 @@ class CenterHead(nn.Module):
                 heads.update(dict(hm=(num_cls, num_hm_conv)))
 
                 self.tasks.append(
-                    SepHead(share_conv_channel, heads, bn=True, init_bias=init_bias, final_kernel=3, two_stage=self.two_stage)
+                    SepHead(share_conv_channel, heads, bn=True, init_bias=init_bias, final_kernel=3, two_stage=self.two_stage, forecast_feature=self.forecast_feature)
                 )
             else:
                 self.tasks.append(
@@ -330,8 +345,11 @@ class CenterHead(nn.Module):
 
         x = self.shared_conv(x)
 
-        for task in self.tasks:
-            ret_dicts.append(task(x))
+        for i, task in enumerate(self.tasks):
+            if i != 0 and self.forecast_feature:
+                ret_dicts.append(task(x + ret_dicts[-1]["feats"]))
+            else:
+                ret_dicts.append(task(x))
 
         return ret_dicts
 
@@ -341,7 +359,7 @@ class CenterHead(nn.Module):
 
     def loss(self, example, preds_dicts, **kwargs):
         rets = []
-        import pdb; pdb.set_trace()
+
         for task_id, preds_dict in enumerate(preds_dicts):
             # heatmap focal loss
             hm = self.num_classes[task_id]

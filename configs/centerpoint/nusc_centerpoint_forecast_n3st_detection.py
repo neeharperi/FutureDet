@@ -10,6 +10,7 @@ REVERSE=False
 SPARSE=True
 DENSE=False
 BEV_MAP=False
+FORECAST_FEATS=False
 
 sampler_type = "trajectory"
 
@@ -63,6 +64,7 @@ model = dict(
         sparse=SPARSE,
         dense=DENSE,
         bev_map=BEV_MAP,
+        forecast_feature=FORECAST_FEATS
     ),
 )
 

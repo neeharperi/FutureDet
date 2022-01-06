@@ -3,7 +3,7 @@ import logging
 
 from det3d.utils.config_tool import get_downsample_factor
 
-timesteps = 1
+timesteps = 7
 DOUBLE_FLIP=False
 TWO_STAGE=False
 REVERSE=False 
@@ -12,7 +12,7 @@ DENSE=False
 BEV_MAP=False
 FORECAST_FEATS=False
 
-sampler_type = "standard"
+sampler_type = "trajectory"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),

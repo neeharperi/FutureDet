@@ -3,16 +3,16 @@ import logging
 
 from det3d.utils.config_tool import get_downsample_factor
 
-timesteps = 1
+timesteps = 7
 DOUBLE_FLIP=False
 TWO_STAGE=False
 REVERSE=False 
 SPARSE=False
-DENSE=False
+DENSE=True
 BEV_MAP=False
-FORECAST_FEATS=False
+FORECAST_FEATS=True
 
-sampler_type = "standard"
+sampler_type = "trajectory"
 
 tasks = [
     dict(num_class=1, class_names=["car"]),
@@ -54,7 +54,7 @@ model = dict(
         tasks=tasks,
         dataset='nuscenes',
         weight=0.25,
-        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0, 1.0],
+        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
         common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'vel': (2, 2)},
         share_conv_channel=64,
         dcn_head=False,
@@ -75,7 +75,7 @@ assigner = dict(
     gaussian_overlap=0.1,
     max_objs=500,
     min_radius=2,
-    radius_mult = False
+    radius_mult = True
 )
 
 train_cfg = dict(assigner=assigner)
@@ -185,7 +185,7 @@ test_anno = data_root + "/infos_test_20sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         root_path=data_root,
