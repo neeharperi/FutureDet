@@ -335,12 +335,45 @@ class AssignLabel(object):
         else:
             length = len(res["lidar"]["annotations"]["boxes"])
 
-        for i in range(length):
-            example = {}
+        trajectory_map = {"static_car": 1, "linear_car" : 1, "nonlinear_car" : 2}
+        forecast_map = {"car_1" : 1, "car_2" : 2, "car_3" : 3, "car_4" : 4, "car_5" : 5, "car_6" : 6, "car_7" : 7}
 
-            if res["mode"] == "train":
-                gt_dict = res["lidar"]["annotations"]
+        if res["mode"] == "train":
+            gt_dict = res["lidar"]["annotations"]
+            gt_dict["gt_names_trajectory"], gt_dict["gt_names_forecast"], gt_dict["gt_classes_trajectory"], gt_dict["gt_classes_forecast"], gt_dict["gt_boxes_trajectory"], gt_dict["gt_boxes_forecast"] = [], [], [], [], [], []
 
+            for i in range(length):
+                class_names = gt_dict["gt_names"][i]
+                trajectory_names = gt_dict["gt_trajectory"][i]
+                boxes = gt_dict["gt_boxes"][i]
+
+                name_trajectories, classes_trajectories, boxes_trajectories = [], [], []
+
+                for name, trajectory, box in zip(class_names, trajectory_names, boxes):
+                    name_trajectories.append("{}_{}".format(trajectory, name))
+                    classes_trajectories.append(trajectory_map["{}_{}".format(trajectory, name)])
+                    boxes_trajectories.append(box)
+                
+                gt_dict["gt_names_trajectory"].append(np.array(name_trajectories))
+                gt_dict["gt_classes_trajectory"].append(np.array(classes_trajectories))
+                gt_dict["gt_boxes_trajectory"].append(np.array(boxes_trajectories))
+
+            name_forecast, classes_forecast, boxes_forecast = [], [], []
+            for i in range(length):
+                class_names = gt_dict["gt_names"][i]
+                boxes = gt_dict["gt_boxes"][i]
+
+                for name, box in zip(class_names, boxes):
+                    name_forecast.append("{}_{}".format(name, i + 1))
+                    classes_forecast.append(forecast_map["{}_{}".format(name, i + 1)])
+                    boxes_forecast.append(box)
+
+            gt_dict["gt_names_forecast"] = length * [np.array(name_forecast)]
+            gt_dict["gt_classes_forecast"] = length * [np.array(classes_forecast)]
+            gt_dict["gt_boxes_forecast"] = length * [np.array(boxes_forecast)]
+
+            for i in range(length):
+                example = {}
                 # reorganize the gt_dict by tasks
                 task_masks = []
                 flag = 0
@@ -497,10 +530,330 @@ class AssignLabel(object):
         
                 example.update({'gt_boxes_and_cls': gt_boxes_and_cls})
                 example.update({'hm': hms, 'anno_box': anno_boxs, 'ind': inds, 'mask': masks, 'cat': cats})
-            else:
-                pass
 
-            example_forecast.append(example)
+                ###############################################################################################                
+                class_trajectory_names_by_task = [["static_car", "linear_car", "nonlinear_car"]]
+                num_classes_trajectory_by_task = [3]
+                task_masks = []
+                flag = 0
+                for class_name in class_trajectory_names_by_task:
+                    task_masks.append(
+                        [
+                            np.where(
+                                gt_dict["gt_classes_trajectory"][i] == class_name.index(j) + 1 + flag
+                            )
+                            for j in class_name
+                        ]
+                    )
+                    flag += len(class_name)
+
+                task_boxes = []
+                task_classes = []
+                task_names = []
+                flag2 = 0
+                for idx, mask in enumerate(task_masks):
+                    task_box = []
+                    task_class = []
+                    task_name = []
+                    for m in mask:
+                        task_box.append(gt_dict["gt_boxes_trajectory"][i][m])
+                        task_class.append(gt_dict["gt_classes_trajectory"][i][m] - flag2)
+                        task_name.append(gt_dict["gt_names_trajectory"][i][m])
+                    task_boxes.append(np.concatenate(task_box, axis=0))
+                    task_classes.append(np.concatenate(task_class))
+                    task_names.append(np.concatenate(task_name))
+                    flag2 += len(mask)
+
+                for task_box in task_boxes:
+                    # limit rad to [-pi, pi]
+                    task_box[:, -1] = box_np_ops.limit_period(
+                        task_box[:, -1], offset=0.5, period=np.pi * 2
+                    )
+                    task_box[:, -2] = box_np_ops.limit_period(
+                        task_box[:, -2], offset=0.5, period=np.pi * 2
+                    )
+
+                # print(gt_dict.keys())
+                gt_dict["gt_classes_trajectory"][i] = task_classes
+                gt_dict["gt_names_trajectory"][i] = task_names
+                gt_dict["gt_boxes_trajectory"][i] = task_boxes
+
+                res["lidar"]["annotations"] = gt_dict
+
+                draw_gaussian = draw_umich_gaussian
+
+                hms, anno_boxs, inds, masks, cats = [], [], [], [], []
+
+                for idx, task in enumerate(self.tasks):
+                    hm = np.zeros((len(class_trajectory_names_by_task[idx]), feature_map_size[1], feature_map_size[0]),
+                                dtype=np.float32)
+
+                    if res['type'] == 'NuScenesDataset':
+                        # [reg, hei, dim, vx, vy, rots, rotc]
+                        anno_box = np.zeros((max_objs, 14), dtype=np.float32)
+                    elif res['type'] == 'WaymoDataset':
+                        anno_box = np.zeros((max_objs, 10), dtype=np.float32) 
+                    else:
+                        raise NotImplementedError("Only Support nuScene for Now!")
+
+                    ind = np.zeros((max_objs), dtype=np.int64)
+                    mask = np.zeros((max_objs), dtype=np.uint8)
+                    cat = np.zeros((max_objs), dtype=np.int64)
+
+                    num_objs = min(gt_dict['gt_boxes_trajectory'][i][idx].shape[0], max_objs)  
+
+                    for k in range(num_objs):
+                        cls_id = gt_dict['gt_classes_trajectory'][i][idx][k] - 1
+
+                        w, l, h = gt_dict['gt_boxes_trajectory'][i][idx][k][3], gt_dict['gt_boxes_trajectory'][i][idx][k][4], \
+                                gt_dict['gt_boxes_trajectory'][i][idx][k][5]
+                        w, l = w / voxel_size[0] / self.out_size_factor, l / voxel_size[1] / self.out_size_factor
+                        if w > 0 and l > 0:
+                            vel_norm = np.linalg.norm(gt_dict['gt_boxes_trajectory'][i][idx][k][6:8])
+
+                            if self.radius_mult:
+                                mult = min(max(1, vel_norm * (1 + i) / 2), 4)
+                            else:
+                                mult = 1.0
+
+                            radius = mult * gaussian_radius((l, w), min_overlap=self.gaussian_overlap)
+                            radius = max(self._min_radius, int(radius))
+
+                            # be really careful for the coordinate system of your box annotation. 
+                            x, y, z = gt_dict['gt_boxes_trajectory'][i][idx][k][0], gt_dict['gt_boxes_trajectory'][i][idx][k][1], \
+                                    gt_dict['gt_boxes_trajectory'][i][idx][k][2]
+
+                            coor_x, coor_y = (x - pc_range[0]) / voxel_size[0] / self.out_size_factor, \
+                                            (y - pc_range[1]) / voxel_size[1] / self.out_size_factor
+
+                            ct = np.array(
+                                [coor_x, coor_y], dtype=np.float32)  
+                            ct_int = ct.astype(np.int32)
+
+                            # throw out not in range objects to avoid out of array area when creating the heatmap
+                            if not (0 <= ct_int[0] < feature_map_size[0] and 0 <= ct_int[1] < feature_map_size[1]):
+                                continue 
+                            
+                            draw_gaussian(hm[cls_id], ct, radius)
+
+                            new_idx = k
+                            x, y = ct_int[0], ct_int[1]
+
+                            cat[new_idx] = cls_id
+                            ind[new_idx] = y * feature_map_size[0] + x
+                            mask[new_idx] = 1
+
+                            if res['type'] == 'NuScenesDataset': 
+                                vx, vy = gt_dict['gt_boxes_trajectory'][i][idx][k][6:8]
+                                rvx, rvy = gt_dict['gt_boxes_trajectory'][i][idx][k][8:10]
+                                rot = gt_dict['gt_boxes_trajectory'][i][idx][k][10]
+                                rrot = gt_dict['gt_boxes_trajectory'][i][idx][k][11]
+
+                                anno_box[new_idx] = np.concatenate(
+                                    (ct - (x, y), z, np.log(gt_dict['gt_boxes_trajectory'][i][idx][k][3:6]),
+                                    np.array(vx), np.array(vy), np.array(rvx), np.array(rvy), np.sin(rot), np.cos(rot), np.sin(rrot), np.cos(rrot)), axis=None)
+                            elif res['type'] == 'WaymoDataset':
+                                vx, vy = gt_dict['gt_boxes_trajectory'][idx][k][6:8]
+                                rot = gt_dict['gt_boxes_trajectory'][idx][k][-1]
+                                anno_box[new_idx] = np.concatenate(
+                                (ct - (x, y), z, np.log(gt_dict['gt_boxes_trajectory'][idx][k][3:6]),
+                                np.array(vx), np.array(vy), np.sin(rot), np.cos(rot)), axis=None)
+                            else:
+                                raise NotImplementedError("Only Support Waymo and nuScene for Now")
+                    
+
+                    hms.append(hm)
+                    anno_boxs.append(anno_box)
+                    masks.append(mask)
+                    inds.append(ind)
+                    cats.append(cat)
+
+                # used for two stage code 
+                boxes = flatten(gt_dict['gt_boxes_trajectory'][i])
+                classes = merge_multi_group_label(gt_dict['gt_classes_trajectory'][i], num_classes_trajectory_by_task)
+
+                if res["type"] == "NuScenesDataset":
+                    gt_boxes_and_cls = np.zeros((max_objs, 13), dtype=np.float32)
+                elif res['type'] == "WaymoDataset":
+                    gt_boxes_and_cls = np.zeros((max_objs, 10), dtype=np.float32)
+                else:
+                    raise NotImplementedError()
+
+                boxes_and_cls = np.concatenate((boxes, 
+                    classes.reshape(-1, 1).astype(np.float32)), axis=1)
+                num_obj = len(boxes_and_cls)
+                assert num_obj <= max_objs
+                # x, y, z, w, l, h, rotation_y, velocity_x, velocity_y, class_name
+                boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
+                gt_boxes_and_cls[:num_obj] = boxes_and_cls
+
+                example.update({'gt_boxes_and_cls_trajectory': gt_boxes_and_cls})
+                example.update({'hm_trajectory': hms, 'anno_box_trajectory': anno_boxs, 'ind_trajectory': inds, 'mask_trajectory': masks, 'cat_trajectory': cats})
+           
+                ###############################################################################################                
+
+                class_forecast_names_by_task = [["car_1", "car_2", "car_3", "car_4", "car_5", "car_6", "car_7"]]
+                num_classes_forecast_by_task = [7]
+                task_masks = []
+                flag = 0
+                for class_name in class_forecast_names_by_task:
+                    task_masks.append(
+                        [
+                            np.where(
+                                gt_dict["gt_classes_forecast"][i] == class_name.index(j) + 1 + flag
+                            )
+                            for j in class_name
+                        ]
+                    )
+                    flag += len(class_name)
+
+                task_boxes = []
+                task_classes = []
+                task_names = []
+                flag2 = 0
+                for idx, mask in enumerate(task_masks):
+                    task_box = []
+                    task_class = []
+                    task_name = []
+                    for m in mask:
+                        task_box.append(gt_dict["gt_boxes_forecast"][i][m])
+                        task_class.append(gt_dict["gt_classes_forecast"][i][m] - flag2)
+                        task_name.append(gt_dict["gt_names_forecast"][i][m])
+                    task_boxes.append(np.concatenate(task_box, axis=0))
+                    task_classes.append(np.concatenate(task_class))
+                    task_names.append(np.concatenate(task_name))
+                    flag2 += len(mask)
+
+                for task_box in task_boxes:
+                    # limit rad to [-pi, pi]
+                    task_box[:, -1] = box_np_ops.limit_period(
+                        task_box[:, -1], offset=0.5, period=np.pi * 2
+                    )
+                    task_box[:, -2] = box_np_ops.limit_period(
+                        task_box[:, -2], offset=0.5, period=np.pi * 2
+                    )
+
+                # print(gt_dict.keys())
+                gt_dict["gt_classes_forecast"][i] = task_classes
+                gt_dict["gt_names_forecast"][i] = task_names
+                gt_dict["gt_boxes_forecast"][i] = task_boxes
+
+                res["lidar"]["annotations"] = gt_dict
+
+                draw_gaussian = draw_umich_gaussian
+
+                hms, anno_boxs, inds, masks, cats = [], [], [], [], []
+
+                for idx, task in enumerate(self.tasks):
+                    hm = np.zeros((len(class_forecast_names_by_task[idx]), feature_map_size[1], feature_map_size[0]),
+                                dtype=np.float32)
+
+                    if res['type'] == 'NuScenesDataset':
+                        # [reg, hei, dim, vx, vy, rots, rotc]
+                        anno_box = np.zeros((max_objs, 14), dtype=np.float32)
+                    elif res['type'] == 'WaymoDataset':
+                        anno_box = np.zeros((max_objs, 10), dtype=np.float32) 
+                    else:
+                        raise NotImplementedError("Only Support nuScene for Now!")
+
+                    ind = np.zeros((max_objs), dtype=np.int64)
+                    mask = np.zeros((max_objs), dtype=np.uint8)
+                    cat = np.zeros((max_objs), dtype=np.int64)
+
+                    num_objs = min(gt_dict['gt_boxes_forecast'][i][idx].shape[0], max_objs)  
+
+                    for k in range(num_objs):
+                        cls_id = gt_dict['gt_classes_forecast'][i][idx][k] - 1
+
+                        w, l, h = gt_dict['gt_boxes_forecast'][i][idx][k][3], gt_dict['gt_boxes_forecast'][i][idx][k][4], \
+                                gt_dict['gt_boxes_forecast'][i][idx][k][5]
+                        w, l = w / voxel_size[0] / self.out_size_factor, l / voxel_size[1] / self.out_size_factor
+                        if w > 0 and l > 0:
+                            vel_norm = np.linalg.norm(gt_dict['gt_boxes_forecast'][i][idx][k][6:8])
+
+                            if self.radius_mult:
+                                mult = min(max(1, vel_norm * (1 + i) / 2), 4)
+                            else:
+                                mult = 1.0
+
+                            radius = mult * gaussian_radius((l, w), min_overlap=self.gaussian_overlap)
+                            radius = max(self._min_radius, int(radius))
+
+                            # be really careful for the coordinate system of your box annotation. 
+                            x, y, z = gt_dict['gt_boxes_forecast'][i][idx][k][0], gt_dict['gt_boxes_forecast'][i][idx][k][1], \
+                                    gt_dict['gt_boxes_forecast'][i][idx][k][2]
+
+                            coor_x, coor_y = (x - pc_range[0]) / voxel_size[0] / self.out_size_factor, \
+                                            (y - pc_range[1]) / voxel_size[1] / self.out_size_factor
+
+                            ct = np.array(
+                                [coor_x, coor_y], dtype=np.float32)  
+                            ct_int = ct.astype(np.int32)
+
+                            # throw out not in range objects to avoid out of array area when creating the heatmap
+                            if not (0 <= ct_int[0] < feature_map_size[0] and 0 <= ct_int[1] < feature_map_size[1]):
+                                continue 
+                            
+                            draw_gaussian(hm[cls_id], ct, radius)
+
+                            new_idx = k
+                            x, y = ct_int[0], ct_int[1]
+
+                            cat[new_idx] = cls_id
+                            ind[new_idx] = y * feature_map_size[0] + x
+                            mask[new_idx] = 1
+
+                            if res['type'] == 'NuScenesDataset': 
+                                vx, vy = gt_dict['gt_boxes_forecast'][i][idx][k][6:8]
+                                rvx, rvy = gt_dict['gt_boxes_forecast'][i][idx][k][8:10]
+                                rot = gt_dict['gt_boxes_forecast'][i][idx][k][10]
+                                rrot = gt_dict['gt_boxes_forecast'][i][idx][k][11]
+
+                                anno_box[new_idx] = np.concatenate(
+                                    (ct - (x, y), z, np.log(gt_dict['gt_boxes_forecast'][i][idx][k][3:6]),
+                                    np.array(vx), np.array(vy), np.array(rvx), np.array(rvy), np.sin(rot), np.cos(rot), np.sin(rrot), np.cos(rrot)), axis=None)
+                            elif res['type'] == 'WaymoDataset':
+                                vx, vy = gt_dict['gt_boxes_forecast'][idx][k][6:8]
+                                rot = gt_dict['gt_boxes_forecast'][idx][k][-1]
+                                anno_box[new_idx] = np.concatenate(
+                                (ct - (x, y), z, np.log(gt_dict['gt_boxes_forecast'][idx][k][3:6]),
+                                np.array(vx), np.array(vy), np.sin(rot), np.cos(rot)), axis=None)
+                            else:
+                                raise NotImplementedError("Only Support Waymo and nuScene for Now")
+                    
+
+                    hms.append(hm)
+                    anno_boxs.append(anno_box)
+                    masks.append(mask)
+                    inds.append(ind)
+                    cats.append(cat)
+
+                # used for two stage code 
+                boxes = flatten(gt_dict['gt_boxes_forecast'][i])
+                classes = merge_multi_group_label(gt_dict['gt_classes_forecast'][i], num_classes_forecast_by_task)
+
+                if res["type"] == "NuScenesDataset":
+                    gt_boxes_and_cls = np.zeros((max_objs, 13), dtype=np.float32)
+                elif res['type'] == "WaymoDataset":
+                    gt_boxes_and_cls = np.zeros((max_objs, 10), dtype=np.float32)
+                else:
+                    raise NotImplementedError()
+
+                boxes_and_cls = np.concatenate((boxes, 
+                    classes.reshape(-1, 1).astype(np.float32)), axis=1)
+                num_obj = len(boxes_and_cls)
+                assert num_obj <= max_objs
+                # x, y, z, w, l, h, rotation_y, velocity_x, velocity_y, class_name
+                boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
+                gt_boxes_and_cls[:num_obj] = boxes_and_cls
+
+                example.update({'gt_boxes_and_cls_forecast': gt_boxes_and_cls})
+                example.update({'hm_forecast': hms, 'anno_box_forecast': anno_boxs, 'ind_forecast': inds, 'mask_forecast': masks, 'cat_forecast': cats})
+            
+                example_forecast.append(example)
+
+        else:
+            pass
 
         ex = {k : [] for k in example_forecast[0].keys()}
         for ef in example_forecast:

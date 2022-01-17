@@ -220,14 +220,8 @@ def tracker(time, ret_boxes):
         prev = box_center(previous)
         prev_future = box_future_center(tm, previous)
         
-        if len(curr) == 0 and len(prev) == 0:
+        if len(curr) == 0 or len(prev) == 0:
             continue 
-        
-        if len(curr) == 0:
-            curr_past = prev_future
-
-        if len(prev) == 0:
-            prev = curr_past
         
         dist_mat = distance_matrix(curr_past, prev)
         min_idx = np.argmin(dist_mat, axis=1)
@@ -270,14 +264,8 @@ def tracker(time, ret_boxes):
         futr = box_center(future)
         futr_past = box_past_center(tm, future)
         
-        if len(curr) == 0 and len(futr) == 0:
+        if len(curr) == 0 or len(futr) == 0:
             continue 
-        
-        if len(curr) == 0:
-            curr_future = futr_past
-
-        if len(future) == 0:
-            futr = curr_future
 
         dist_mat = distance_matrix(curr_future, futr)
         min_idx = np.argmin(dist_mat, axis=1)
@@ -318,6 +306,19 @@ def tracker(time, ret_boxes):
             new_box.center = new_box.center + t * velocity
             forecast.append(new_box)
 
+        trajectory.append(forecast)
+
+    for idx in np.arange(len(ret_boxes[-1])):
+        curr = ret_boxes[-1][idx]
+        velocity = curr.velocity
+
+        forecast = [curr]
+        for t in time:
+            new_box = deepcopy(forecast[-1])
+            new_box.center = new_box.center - t * velocity
+            forecast.append(new_box)
+
+        forecast = forecast[::-1]
         trajectory.append(forecast)
 
     return trajectory

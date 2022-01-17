@@ -36,8 +36,10 @@ def example_to_device(example, device, non_blocking=False) -> dict:
     example_torch = {}
     float_names = ["voxels"]
     for k, v in example.items():
-        if k in ["anchors", "anchors_mask", "reg_targets", "reg_weights", "labels", "hm",
-                "anno_box", "ind", "mask", 'cat']:
+        if k in ["anchors", "anchors_mask", "reg_targets", "reg_weights", "labels",
+                 "hm", "anno_box", "ind", "mask", 'cat',
+                 "hm_trajectory", "anno_box_trajectory", "ind_trajectory", "mask_trajectory", 'cat_trajectory',
+                 "hm_forecast", "anno_box_forecast", "ind_forecast", "mask_forecast", 'cat_forecast']:
             
             example_torch[k] = []
             for fc in v:
@@ -54,7 +56,9 @@ def example_to_device(example, device, non_blocking=False) -> dict:
             "cyv_num_voxels",
             "cyv_coordinates",
             "cyv_num_points",
-            "gt_boxes_and_cls"
+            "gt_boxes_and_cls",
+            "gt_boxes_and_cls_trajectory",
+            "gt_boxes_and_cls_forecast",
             "bev_map"
         ]:  
             try:

@@ -205,8 +205,10 @@ def collate_kitti_multi(batch_list, samples_per_gpu=1):
                 coors.append(coor_pad)
             ret[key] = torch.tensor(np.concatenate(coors, axis=0))
 
-        elif key in ["anchors", "anchors_mask", "reg_targets", "reg_weights", "labels", "hm", "anno_box",
-                    "ind", "mask", "cat"]:
+        elif key in ["anchors", "anchors_mask", "reg_targets", "reg_weights", "labels", 
+                     "hm", "anno_box", "ind", "mask", "cat", 
+                     "hm_trajectory", "anno_box_trajectory", "ind_trajectory", "mask_trajectory", "cat_trajectory",
+                     "hm_forecast", "anno_box_forecast", "ind_forecast", "mask_forecast", "cat_forecast"]:
             elements = []
             for i in range(len(elems[0])):
                 element = []
@@ -229,7 +231,7 @@ def collate_kitti_multi(batch_list, samples_per_gpu=1):
 
             ret[key] = res_forecast
 
-        elif key in ['gt_boxes_and_cls', 'bev_map']:
+        elif key in ['gt_boxes_and_cls', 'gt_boxes_and_cls_trajectory', 'gt_boxes_and_cls_forecast', 'bev_map']:
             ret[key] = []
             for i in range(len(elems[0])):
                 el = []

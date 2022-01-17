@@ -11,6 +11,8 @@ SPARSE=False
 DENSE=True
 BEV_MAP=False
 FORECAST_FEATS=False
+CLASSIFY=False
+WIDE=False
 
 sampler_type = "trajectory"
 
@@ -64,7 +66,9 @@ model = dict(
         sparse=SPARSE,
         dense=DENSE,
         bev_map=BEV_MAP,
-        forecast_feature=FORECAST_FEATS
+        forecast_feature=FORECAST_FEATS,
+        classify=CLASSIFY,
+        wide_head=WIDE,
     ),
 )
 

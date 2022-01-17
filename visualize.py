@@ -41,7 +41,7 @@ def center_distance(gt_box: EvalBox, pred_box: EvalBox) -> float:
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiment', default="FutureDetection")
-parser.add_argument('--model', default="forecast_n3dt")
+parser.add_argument('--model', default="forecast_n3t")
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument('--dataset', default="nusc")

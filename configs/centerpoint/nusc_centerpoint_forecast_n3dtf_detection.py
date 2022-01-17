@@ -11,6 +11,8 @@ SPARSE=False
 DENSE=True
 BEV_MAP=False
 FORECAST_FEATS=True
+CLASSIFY=False
+WIDE=False
 
 sampler_type = "trajectory"
 
@@ -64,7 +66,9 @@ model = dict(
         sparse=SPARSE,
         dense=DENSE,
         bev_map=BEV_MAP,
-        forecast_feature=FORECAST_FEATS
+        forecast_feature=FORECAST_FEATS,
+        classify=CLASSIFY,
+        wide_head=WIDE,
     ),
 )
 
@@ -75,7 +79,7 @@ assigner = dict(
     gaussian_overlap=0.1,
     max_objs=500,
     min_radius=2,
-    radius_mult = True
+    radius_mult=True
 )
 
 train_cfg = dict(assigner=assigner)
@@ -185,7 +189,7 @@ test_anno = data_root + "/infos_test_20sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=0,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         root_path=data_root,

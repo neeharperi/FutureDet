@@ -45,6 +45,7 @@ class FeatureAdaption(nn.Module):
                  out_channels,
                  kernel_size=3,
                  deformable_groups=4):
+
         super(FeatureAdaption, self).__init__()
         offset_channels = kernel_size * kernel_size * 2
         self.conv_offset = nn.Conv2d(
@@ -77,6 +78,7 @@ class SepHead(nn.Module):
         init_bias=-2.19,
         two_stage=False,
         forecast_feature=False,
+        wide_head=False,
         **kwargs,
     ):
         super(SepHead, self).__init__(**kwargs)
@@ -84,11 +86,12 @@ class SepHead(nn.Module):
         self.heads = heads 
         self.two_stage = two_stage
         self.forecast_feature = forecast_feature
+        self.wide_head = wide_head 
 
         if self.two_stage:
             if "vel" in self.heads and "rot" in self.heads:
                 self.forecast_conv = nn.Sequential(
-                    nn.Conv2d(head_conv, head_conv,
+                    nn.Conv2d(in_channels, head_conv,
                     kernel_size=3, padding=1, bias=True),
                     nn.BatchNorm2d(head_conv),
                     nn.ReLU(inplace=True)
@@ -103,18 +106,21 @@ class SepHead(nn.Module):
                 )
 
         if self.forecast_feature:
-                self.forecast_feats = nn.Sequential(
-                    nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
-                    nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
-                    nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
-                )
+            self.forecast_conv = nn.Sequential(
+                nn.Conv2d(in_channels, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
+                nn.Conv2d(head_conv, head_conv, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(head_conv), nn.ReLU(inplace=True),
+
+            )
+
+        if self.wide_head:
+            head_conv = in_channels
 
         for head in self.heads:
             classes, num_conv = self.heads[head]
-
+                
             fc = Sequential()
             for i in range(num_conv-1):
-                fc.add(nn.Conv2d(in_channels, head_conv,
+                fc.add(nn.Conv2d(head_conv, head_conv,
                     kernel_size=final_kernel, stride=1, 
                     padding=final_kernel // 2, bias=True))
                 if bn:
@@ -139,7 +145,7 @@ class SepHead(nn.Module):
         ret_dict = dict()     
 
         if self.forecast_feature:
-            x = self.forecast_feats(x)
+            x = self.forecast_conv(x)
             ret_dict["feats"] = x
 
         for head in self.heads:
@@ -233,6 +239,8 @@ class CenterHead(nn.Module):
         dense=False,
         bev_map=False,
         forecast_feature=False,
+        classify=True,
+        wide_head=False,
     ):
         super(CenterHead, self).__init__()
         
@@ -242,9 +250,11 @@ class CenterHead(nn.Module):
         self.dense = dense
         self.bev_map = bev_map
         self.forecast_feature = forecast_feature
+        self.classify = classify
+        self.wide_head = wide_head
         self.target_timesteps = 7
 
-        if not self.reverse and not self.sparse and not self.dense:
+        if not self.reverse and not self.sparse and not self.dense and not self.classify and not self.wide_head:
             self.standard = True
         else:
             self.standard = False 
@@ -290,25 +300,12 @@ class CenterHead(nn.Module):
 
         # a shared convolution 
 
-        if self.bev_map:
-            self.shared_conv = nn.Sequential(
-                nn.Conv2d(in_channels + 5, share_conv_channel,
-                kernel_size=3, padding=1, bias=True),
-                nn.BatchNorm2d(share_conv_channel),
-                nn.ReLU(inplace=True)
-            )
-        else:
-            self.shared_conv = nn.Sequential(
-                nn.Conv2d(in_channels, share_conv_channel,
-                kernel_size=3, padding=1, bias=True),
-                nn.BatchNorm2d(share_conv_channel),
-                nn.ReLU(inplace=True)
-            )
         self.tasks = nn.ModuleList()
         print("Use HM Bias: ", init_bias)
 
         if dcn_head:
             print("Use Deformable Convolution in the CenterHead!")
+
 
         if self.sparse:
             #self.num_classes = 2 * [1, 1]
@@ -318,19 +315,47 @@ class CenterHead(nn.Module):
             #self.num_classes = self.timesteps * [1, 1]
             self.num_classes = self.timesteps * [1]
 
-        for num_cls in self.num_classes:
+        if self.classify:
+            self.num_classes = self.timesteps * [3]
+
+        if self.wide_head:
+            self.num_classes = [7]
+            share_conv_channel = 512
+
+        if self.bev_map:
+            self.shared_conv = nn.Sequential(
+                nn.Conv2d(in_channels + 5, share_conv_channel,
+                kernel_size=3, padding=1, bias=True),
+                nn.BatchNorm2d(share_conv_channel),
+                nn.ReLU(inplace=True)
+            )
+
+        else:
+            self.shared_conv = nn.Sequential(
+                nn.Conv2d(in_channels, share_conv_channel,
+                kernel_size=3, padding=1, bias=True),
+                nn.BatchNorm2d(share_conv_channel),
+                nn.ReLU(inplace=True)
+            )
+
+        for i, num_cls in enumerate(self.num_classes):
             heads = copy.deepcopy(common_heads)
 
             for head in heads.keys():
-                if not self.dense and head in ["vel", "rvel"]:
+                if not self.dense and not self.classify and not self.wide_head and head in ["vel", "rvel"]:
                     heads[head] = (self.timesteps * heads[head][0], heads[head][1])
-                
+
             if not dcn_head:
                 heads.update(dict(hm=(num_cls, num_hm_conv)))
 
-                self.tasks.append(
-                    SepHead(share_conv_channel, heads, bn=True, init_bias=init_bias, final_kernel=3, two_stage=self.two_stage, forecast_feature=self.forecast_feature)
-                )
+                if i != 0 and self.forecast_feature:
+                    self.tasks.append(
+                        SepHead(2 * share_conv_channel, heads, bn=True, init_bias=init_bias, final_kernel=3, two_stage=self.two_stage, forecast_feature=self.forecast_feature, wide_head=self.wide_head)
+                    )
+                else:
+                    self.tasks.append(
+                        SepHead(share_conv_channel, heads, bn=True, init_bias=init_bias, final_kernel=3, two_stage=self.two_stage, forecast_feature=self.forecast_feature, wide_head=self.wide_head)
+                    )
             else:
                 self.tasks.append(
                     DCNSepHead(share_conv_channel, num_cls, heads, bn=True, init_bias=init_bias, final_kernel=3)
@@ -347,7 +372,8 @@ class CenterHead(nn.Module):
 
         for i, task in enumerate(self.tasks):
             if i != 0 and self.forecast_feature:
-                ret_dicts.append(task(x + ret_dicts[-1]["feats"]))
+                feature_map = torch.cat([x, ret_dicts[i - 1]["feats"]], axis=1) 
+                ret_dicts.append(task(feature_map))
             else:
                 ret_dicts.append(task(x))
 
@@ -376,6 +402,11 @@ class CenterHead(nn.Module):
             elif self.dense:
                 #hm_loss = self.crit(preds_dict['hm'], example['hm'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], example['mask'][task_id // 2][task_id % 2], example['cat'][task_id // 2][task_id % 2])
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][task_id][0], example['ind'][task_id][0], example['mask'][task_id][0], example['cat'][task_id][0])
+            elif self.classify:
+                hm_loss = self.crit(preds_dict['hm'], example['hm_trajectory'][task_id][0], example['ind_trajectory'][task_id][0], example['mask_trajectory'][task_id][0], example['cat_trajectory'][task_id][0])
+            elif self.wide_head:
+                hm_loss = self.crit(preds_dict['hm'], example['hm_forecast'][task_id][0], example['ind_forecast'][task_id][0], example['mask_forecast'][task_id][0], example['cat_forecast'][task_id][0])
+
             else:
                 hm_loss = self.crit(preds_dict['hm'], example['hm'][0][task_id], example['ind'][0][task_id], example['mask'][0][task_id], example['cat'][0][task_id])
 
@@ -392,13 +423,20 @@ class CenterHead(nn.Module):
             elif self.dense:
                 #target_box = example['anno_box'][task_id // 2][task_id % 2]
                 target_box = example['anno_box'][task_id][0]
+            
+            elif self.classify:
+                target_box = example['anno_box_trajectory'][task_id][0]
+
+            elif self.wide_head:
+                target_box = example['anno_box_trajectory'][task_id][0]
+
             else:
                 target_box = [example['anno_box'][i][task_id] for i in range(self.timesteps)]
 
             # reconstruct the anno_box from multiple reg heads
             if self.dataset in ['waymo', 'nuscenes']:
                 if 'vel' in preds_dict and 'rvel' in preds_dict and 'rot' in preds_dict and 'rrot' in preds_dict:
-                    if self.dense:
+                    if self.dense or self.classify or self.wide_head:
                         preds_dict['anno_box'] = torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
                                                 preds_dict['vel'], preds_dict['rvel'], preds_dict['rot'], preds_dict['rrot']), dim=1)
                     
@@ -407,10 +445,10 @@ class CenterHead(nn.Module):
                                         preds_dict['vel'][:,2*i:2*i+2,::], preds_dict['rvel'][:,2*i:2*i+2,::], preds_dict['rot'], preds_dict['rrot']), dim=1) for i in range(self.timesteps)]
                     
                 elif 'vel' in preds_dict and 'rot' in preds_dict:
-                    if self.dense:
+                    if self.dense or self.classify or self.wide_head:
                         preds_dict['anno_box'] = torch.cat((preds_dict['reg'], preds_dict['height'], preds_dict['dim'],
                                                             preds_dict['vel'], preds_dict['rot']), dim=1)
-            
+
                         target_box = target_box[..., [0, 1, 2, 3, 4, 5, 6, 7, -2, -1]]                     
 
                     else:
@@ -442,6 +480,12 @@ class CenterHead(nn.Module):
                 #box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id // 2][task_id % 2], example['ind'][task_id // 2][task_id % 2], target_box[task_id // 2])
                 box_loss = self.crit_reg(preds_dict['anno_box'], example['mask'][task_id][0], example['ind'][task_id][0], target_box)
 
+            elif self.classify:
+                box_loss = self.crit_reg(preds_dict['anno_box'], example['mask_trajectory'][task_id][0], example['ind_trajectory'][task_id][0], target_box)
+
+            elif self.wide_head:
+                box_loss = self.crit_reg(preds_dict['anno_box'], example['mask_forecast'][task_id][0], example['ind_forecast'][task_id][0], target_box)
+
             else:
                 box_loss = [self.crit_reg(preds_dict['anno_box'][i], example['mask'][0][task_id], example['ind'][0][task_id], target_box[i]) for i in range(self.timesteps)]
 
@@ -452,7 +496,7 @@ class CenterHead(nn.Module):
                 for i in range(self.timesteps):
                     loc_loss.append((box_loss[i] * box_loss[i].new_tensor(self.code_weights_two_stage_forecast)).sum())
             else:
-                if self.dense:
+                if self.dense or self.classify or self.wide_head:
                     loc_loss.append((box_loss * box_loss.new_tensor(self.code_weights)).sum())
 
                 else:
@@ -465,7 +509,7 @@ class CenterHead(nn.Module):
                 #ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps - 1) * (task_id // 2)][task_id % 2].float()))})
                 ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': [box_loss[i].detach().cpu() for i in range(self.timesteps)], 'num_positive': sum(sum(example['mask'][(self.timesteps - 1) * (task_id)][0].float()))})
 
-            elif self.dense:
+            elif self.dense or self.classify or self.wide_head:
                 #ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': box_loss.detach().cpu(), 'num_positive': sum(sum(example['mask'][task_id // 2][task_id % 2].float()))})
                 ret.update({'loss': loss, 'hm_loss': hm_loss.detach().cpu(), 'loc_loss': loc_loss, 'loc_loss_elem': box_loss.detach().cpu(), 'num_positive': sum(sum(example['mask'][task_id][0].float()))})
 
