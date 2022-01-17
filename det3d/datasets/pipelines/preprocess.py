@@ -335,7 +335,7 @@ class AssignLabel(object):
         else:
             length = len(res["lidar"]["annotations"]["boxes"])
 
-        trajectory_map = {"static_car": 1, "linear_car" : 1, "nonlinear_car" : 2}
+        trajectory_map = {"static_car": 1, "linear_car" : 2, "nonlinear_car" : 3}
         forecast_map = {"car_1" : 1, "car_2" : 2, "car_3" : 3, "car_4" : 4, "car_5" : 5, "car_6" : 6, "car_7" : 7}
 
         if res["mode"] == "train":
@@ -523,7 +523,7 @@ class AssignLabel(object):
                 boxes_and_cls = np.concatenate((boxes, 
                     classes.reshape(-1, 1).astype(np.float32)), axis=1)
                 num_obj = len(boxes_and_cls)
-                assert num_obj <= max_objs
+                assert num_obj <= max_objs, "{} is greater than {}".format(num_obj, max_objs)
                 # x, y, z, w, l, h, rotation_y, velocity_x, velocity_y, class_name
                 boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
                 gt_boxes_and_cls[:num_obj] = boxes_and_cls
@@ -682,7 +682,7 @@ class AssignLabel(object):
                 boxes_and_cls = np.concatenate((boxes, 
                     classes.reshape(-1, 1).astype(np.float32)), axis=1)
                 num_obj = len(boxes_and_cls)
-                assert num_obj <= max_objs
+                assert num_obj <= max_objs, "{} is greater than {}".format(num_obj, max_objs)
                 # x, y, z, w, l, h, rotation_y, velocity_x, velocity_y, class_name
                 boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
                 gt_boxes_and_cls[:num_obj] = boxes_and_cls
@@ -691,7 +691,6 @@ class AssignLabel(object):
                 example.update({'hm_trajectory': hms, 'anno_box_trajectory': anno_boxs, 'ind_trajectory': inds, 'mask_trajectory': masks, 'cat_trajectory': cats})
            
                 ###############################################################################################                
-
                 class_forecast_names_by_task = [["car_1", "car_2", "car_3", "car_4", "car_5", "car_6", "car_7"]]
                 num_classes_forecast_by_task = [7]
                 task_masks = []
@@ -842,7 +841,7 @@ class AssignLabel(object):
                 boxes_and_cls = np.concatenate((boxes, 
                     classes.reshape(-1, 1).astype(np.float32)), axis=1)
                 num_obj = len(boxes_and_cls)
-                assert num_obj <= max_objs
+                assert num_obj <= max_objs, "{} is greater than {}".format(num_obj, max_objs)
                 # x, y, z, w, l, h, rotation_y, velocity_x, velocity_y, class_name
                 boxes_and_cls = boxes_and_cls[:, [0, 1, 2, 3, 4, 5, 10, 11, 6, 7, 8, 9, 12]]
                 gt_boxes_and_cls[:num_obj] = boxes_and_cls
