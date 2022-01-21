@@ -80,6 +80,8 @@ def parse_args():
     parser.add_argument("--extractBox", action="store_true")
     parser.add_argument("--forecast", type=int, default=6)
     parser.add_argument("--forecast_mode", default="velocity_forward")
+    parser.add_argument("--rerank", default="last")
+
     parser.add_argument("--tp_pct", type=float, default=0.6)
     parser.add_argument("--static_only", action="store_true")
     parser.add_argument("--eval_only", action="store_true")
@@ -89,6 +91,8 @@ def parse_args():
 
     parser.add_argument("--nms", action="store_true")
     parser.add_argument("--K", default=1, type=int)
+    parser.add_argument("--C", default=1, type=float)
+
     parser.add_argument("--split", default="val")
     parser.add_argument("--version", default="v1.0-trainval")
     parser.add_argument("--modelCheckPoint", default="latest")
@@ -249,7 +253,7 @@ def main():
         return
     
     predictions = load_pred(args.work_dir, args.split, args.modelCheckPoint)
-    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, nms=args.nms, K=args.K, split=args.split, version=args.version, eval_only=args.eval_only, jitter=args.jitter, association_oracle=args.association_oracle)
+    result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, rerank=args.rerank, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, nms=args.nms, K=args.K, C=args.C, split=args.split, version=args.version, eval_only=args.eval_only, jitter=args.jitter, association_oracle=args.association_oracle)
 
     if result_dict is not None:
         for k, v in result_dict["results"].items():

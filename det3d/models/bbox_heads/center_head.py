@@ -577,13 +577,15 @@ class CenterHead(nn.Module):
                 forecast_preds_dicts.append(copy.deepcopy(reverse_dict))
 
         elif self.classify:
+            self.num_classes = self.timesteps * [1]
             for pred_dict in preds_dicts:
-                hm = torch.max(pred_dict["hm"], dim=1)
-                pred_dict["hm"] = hm
-            
+                pred_dict["hm"] = torch.max(pred_dict["hm"], dim=1)[0].unsqueeze(1)
+                forecast_preds_dicts.append(copy.deepcopy(pred_dict))
+
             forecast_pred_dicts = pred_dict
 
         elif self.wide_head:
+            self.num_classes = self.timesteps * [1]
             pred_dict = preds_dicts[0]
             hms = [pred_dict['hm'][:,i] for i in range(self.timesteps)]
 

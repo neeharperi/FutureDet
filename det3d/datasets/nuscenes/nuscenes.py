@@ -407,7 +407,7 @@ def multi_future(forecast_boxes):
 
     return forecast_boxes
 
-def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, jitter, K):
+def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, jitter, K, C):
     ret_boxes, ret_tokens = [], []
 
     for t in range(forecast):
@@ -629,6 +629,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
                 ret_boxes.append(new_traj)
 
         ###############################################
+        
         for idx in np.arange(len(curr_boxes)):
             curr = curr_boxes[idx][0]
             velocity = curr.velocity
@@ -653,7 +654,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
         
             forecast = forecast[::-1]
             ret_boxes.append(forecast)
-
+        
     elif forecast_mode == "velocity_dense":
         ret_boxes = forecast_boxes 
 
@@ -665,13 +666,14 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
         for trajectory_box in ret_boxes:
             for _ in range(K - 1):
                 start_box = trajectory_box[0]
-                vel_norm = np.linalg.norm(start_box.velocity)
-                velocity = start_box.velocity
+                vel_norm = C * np.linalg.norm(start_box.velocity)
+                start_vel = start_box.velocity
+                jittered_vel = np.random.normal(start_vel, np.array([vel_norm, vel_norm, vel_norm]))
 
                 forecast_boxes = [start_box]
                 for i in range(forecast - 1):
                     new_box = deepcopy(forecast_boxes[-1])
-                    new_box.center = new_box.center + time[i] * np.random.normal(velocity, np.array([vel_norm, vel_norm, vel_norm]))
+                    new_box.center = new_box.center + time[i] * jittered_vel
 
                     forecast_boxes.append(new_box)
 
@@ -680,6 +682,19 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
         ret_boxes = ret_boxes + jitter_boxes
 
     return ret_boxes, ret_tokens
+
+def trajectory_score(fboxes, rerank, timesteps):
+    if rerank == "last":
+        return fboxes[-1]["detection_score"]
+
+    elif rerank == "add":
+        return np.sum([fboxes[i]["detection_score"] for i in range(timesteps)]) / timesteps
+
+    elif rerank == "mult":
+        return np.product([fboxes[i]["detection_score"] for i in range(timesteps)])
+
+    assert False, "{} is Invalid".format(rerank)
+
 
 @DATASETS.register_module
 class NuScenesDataset(PointCloudDataset):
@@ -851,7 +866,7 @@ class NuScenesDataset(PointCloudDataset):
     def __getitem__(self, idx):
         return self.get_sensor_data(idx)
 
-    def evaluation(self, detections, output_dir=None, testset=False, forecast=7, forecast_mode="velocity_forward", tp_pct=0.6, root="/ssd0/nperi/nuScenes", static_only=False, cohort_analysis=False, nms=False, K=1, split="val", version="v1.0-trainval", eval_only=False, jitter=False, association_oracle=False):
+    def evaluation(self, detections, output_dir=None, testset=False, forecast=7, forecast_mode="velocity_forward", rerank="last", tp_pct=0.6, root="/ssd0/nperi/nuScenes", static_only=False, cohort_analysis=False, nms=False, K=1, C=1, split="val", version="v1.0-trainval", eval_only=False, jitter=False, association_oracle=False):
         self.eval_version = "detection_forecast"
         name = self._info_path.split("/")[-1].split(".")[0]
         res_path = str(Path(output_dir) / Path(name + ".json"))
@@ -905,7 +920,7 @@ class NuScenesDataset(PointCloudDataset):
         
         if not eval_only:
             for det_forecast in tqdm(dets):
-                det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, jitter, K)
+                det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, jitter, K, C)
                 token = tokens[0]
                 annos = []
                 
@@ -939,6 +954,8 @@ class NuScenesDataset(PointCloudDataset):
 
                     fboxes = [box_serialize(box, token, name, attr) for box, token in zip(boxes, tokens)]
                     
+                    forecast_score = trajectory_score(fboxes, rerank, forecast)
+
                     nusc_anno = {
                         "sample_token": token,
                         "translation": box.center.tolist(),
@@ -948,7 +965,7 @@ class NuScenesDataset(PointCloudDataset):
                         "forecast_boxes" : fboxes,
                         "detection_name": name,
                         "detection_score": fboxes[0]["detection_score"],
-                        "forecast_score" : fboxes[-1]["detection_score"],
+                        "forecast_score" : forecast_score,
                         "forecast_id" : i, 
                         "attribute_name": attr,
                     }

@@ -852,7 +852,7 @@ class AssignLabel(object):
                 example_forecast.append(example)
 
         else:
-            pass
+            example_forecast = length * [{}]
 
         ex = {k : [] for k in example_forecast[0].keys()}
         for ef in example_forecast:

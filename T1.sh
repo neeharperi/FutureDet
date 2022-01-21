@@ -1,1 +1,2 @@
-python train.py --experiment FutureDetection --model forecast_n3ct
+python evaluate.py --experiment FutureDetection --model forecast_n3wt --forecast_mode velocity_dense --cohort_analysis
+python evaluate.py --experiment FutureDetection --model forecast_n3wt --forecast_mode velocity_dense  --K 5 --cohort_analysis --eval_only  
