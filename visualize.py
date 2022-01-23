@@ -37,11 +37,12 @@ def center_distance(gt_box: EvalBox, pred_box: EvalBox) -> float:
     :param pred_box: Predicted sample.
     :return: L2 distance.
     """
-    return np.linalg.norm(np.array(pred_box.translation[:2]) - np.array(gt_box.translation[:2]))
+ 
+    return np.linalg.norm(np.array(pred_box["translation"][:2]) - np.array(gt_box["translation"][:2]))
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--experiment', default="FutureDetection")
-parser.add_argument('--model', default="forecast_n3wt")
+parser.add_argument('--model', default="forecast_n3dtf")
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument('--dataset', default="nusc")
@@ -97,26 +98,50 @@ for sample_token in tqdm(gt_boxes.boxes.keys()):
     if sample_token not in pred_boxes.boxes.keys():
         continue
 
-    pred = pred_boxes.boxes[sample_token]
-
     gt = [box for box in gt if box.detection_name in classname]
 
     if len(gt) == 0:
         continue
 
+    forecast_match = [[0.5, 1, 2, 4],
+                  [0.58, 1.17, 2.53, 4.67],
+                  [0.66, 1.33, 2.67, 5.33],
+                  [0.75, 1.5, 3, 6],
+                  [0.83, 1.67, 3.33, 6.67],
+                  [0.92, 1.83, 3.67, 7.33],
+                  [1, 2, 4, 8]
+                  ]
+
     match_pred = []
-    for pred_box in pred:
-        min_dist = np.inf
+    pred_boxes_list = pred_boxes.boxes[sample_token]
+    pred_confs = [box.detection_score for box in pred_boxes_list]
+    sortind = [i for (v, i) in sorted((v, i) for (i, v) in enumerate(pred_confs))][::-1]
 
-        for gt_box in gt:
-            this_distance = center_distance(gt_box, pred_box)
-            if this_distance < min_dist:
-                min_dist = this_distance
+    taken = set()  # Initially no gt bounding box is matched.
+    for ind in sortind:
+        pred_box = pred_boxes_list[ind]
 
-        is_match = min_dist < 0.5
+        min_dist = forecast * [np.inf]
+        match_gt_idx = None
+
+        for gt_idx, gt_box in enumerate(gt):
+
+            # Find closest match among ground truth boxes
+            if gt_box.detection_name in classname and not gt_idx in taken:
+                this_distance = [center_distance(gt_box.forecast_boxes[t], pred_boxes_list[ind].forecast_boxes[t]) for t in range(forecast)]
+                if np.sum(this_distance) < np.sum(min_dist):
+                    min_dist = this_distance
+                    match_gt_idx = gt_idx
+     
+
+        # If the closest match is close enough according to threshold we have a match!
+        is_match = all([min_dist[t] < forecast_match[t][0] for t in range(forecast)])
+                
 
         if is_match:
             match_pred.append(pred_box)
+
+
 
     visualize_sample_forecast(nusc, sample_token, gt, match_pred, classname=classname, dets_only=dets_only, savepath="{}".format("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection/{sample_token}.png".format(outputDirectory=outputDirectory,
                                                                                                                                                                                                                               experiment=experiment, 

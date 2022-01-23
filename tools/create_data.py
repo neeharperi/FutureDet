@@ -13,10 +13,12 @@ from det3d.datasets.utils.create_gt_database import create_groundtruth_database
 from det3d.datasets.waymo import waymo_common as waymo_ds
 
 def nuscenes_data_prep(root_path, version, experiment="trainval_forecast", nsweeps=20, filter_zero=True, timesteps=7):
+    past = True if "past" in experiment else False
+
     if not os.path.isdir(root_path + "/" + experiment):
         os.makedirs(root_path + "/" + experiment)
 
-    nu_ds.create_nuscenes_infos(root_path, version=version, experiment=experiment, nsweeps=nsweeps, filter_zero=filter_zero, timesteps=timesteps)
+    nu_ds.create_nuscenes_infos(root_path, version=version, experiment=experiment, nsweeps=nsweeps, filter_zero=filter_zero, timesteps=timesteps, past=past)
     create_groundtruth_database(
         "NUSC",
         root_path + "/{}".format(experiment),

@@ -306,8 +306,16 @@ def tracker(time, ret_boxes):
             new_box.center = new_box.center + t * velocity
             forecast.append(new_box)
 
-        trajectory.append(forecast)
+        #last = box_center([forecast[-1]])
+        #last_det = box_center(ret_boxes[-1])
+        #dist_mat = distance_matrix(last, last_det)
+        #min_idx = np.argmin(dist_mat, axis=1)
+        #min_dist = np.min(dist_mat, axis=1)
 
+        forecast[-1] = ret_boxes[-1][min_idx[0]]
+
+        trajectory.append(forecast)
+    
     for idx in np.arange(len(ret_boxes[-1])):
         curr = ret_boxes[-1][idx]
         velocity = curr.velocity
@@ -319,10 +327,18 @@ def tracker(time, ret_boxes):
             forecast.append(new_box)
 
         forecast = forecast[::-1]
+
+        #first = box_center([forecast[0]])
+        #first_det = box_center(ret_boxes[0])
+        #dist_mat = distance_matrix(first, first_det)
+        #min_idx = np.argmin(dist_mat, axis=1)
+        #min_dist = np.min(dist_mat, axis=1)
+
+        #forecast[0] = ret_boxes[0][min_idx[0]]
         trajectory.append(forecast)
-
+    
     return trajectory
-
+    
 def box_serialize(box, token, name, attr):
     ret = {"sample_token": token,
             "translation": box.center.tolist(),

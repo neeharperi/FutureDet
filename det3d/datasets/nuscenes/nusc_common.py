@@ -307,7 +307,7 @@ def center_distance(gt_box, pred_box) -> float:
     """
     return np.linalg.norm(np.array(pred_box.center[:2]) - np.array(gt_box.center[:2]))
 
-def trajectory(nusc, boxes, time, timesteps=7):
+def trajectory(nusc, boxes, time, timesteps=7, past=False):
     target = boxes[-1]
     
     static_forecast = deepcopy(boxes[0])
@@ -315,7 +315,12 @@ def trajectory(nusc, boxes, time, timesteps=7):
     linear_forecast = deepcopy(boxes[0])
     vel = linear_forecast.velocity[:2]
     disp = np.sum(list(map(lambda x: np.array(list(vel) + [0]) * x, time)), axis=0)
-    linear_forecast.center = linear_forecast.center + disp
+
+    if past:
+        linear_forecast.center = linear_forecast.center - disp
+
+    else:
+        linear_forecast.center = linear_forecast.center + disp
     
     if center_distance(target, static_forecast) < max(target.wlh[0], target.wlh[1]):
         return "static"
@@ -326,7 +331,7 @@ def trajectory(nusc, boxes, time, timesteps=7):
     else:
         return "nonlinear"
 
-def get_annotations(nusc, annotations, ref_boxes, timesteps):
+def get_annotations(nusc, annotations, ref_boxes, timesteps, past):
     forecast_annotations = []
     forecast_boxes = []   
     forecast_trajectory = []
@@ -364,11 +369,18 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
             next_token = annotation["next"]
             prev_token = pannotation["prev"]
 
-            if next_token != "":
-                annotation = nusc.get("sample_annotation", next_token)
-            
-            if prev_token != "":
-                pannotation = nusc.get("sample_annotation", prev_token)
+            if past:
+                if next_token != "":
+                    pannotation = nusc.get("sample_annotation", next_token)
+                
+                if prev_token != "":
+                    annotation = nusc.get("sample_annotation", prev_token)
+            else:
+                if next_token != "":
+                    annotation = nusc.get("sample_annotation", next_token)
+                
+                if prev_token != "":
+                    pannotation = nusc.get("sample_annotation", prev_token)
         
         tokens = [b["sample_token"] for b in tracklet_annotation]
         time = [get_time(nusc, src, dst) for src, dst in window(tokens, 2)]
@@ -380,7 +392,7 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
 
     return forecast_boxes, forecast_annotations, forecast_trajectory
 
-def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20, filter_zero=True, timesteps=7):
+def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20, filter_zero=True, timesteps=7, past=False):
     from nuscenes.utils.geometry_utils import transform_matrix
     
     train_nusc_infos = []
@@ -494,7 +506,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20,
 
         if not test:
             annotations = [nusc.get("sample_annotation", token) for token in sample["anns"]]
-            forecast_boxes, forecast_annotations, forecast_trajectory = get_annotations(nusc, annotations, ref_boxes, timesteps)
+            forecast_boxes, forecast_annotations, forecast_trajectory = get_annotations(nusc, annotations, ref_boxes, timesteps, past)
 
             mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts']) > 0 for anno in annotations], dtype=bool).reshape(-1)
             locs = [np.array([b.center for b in boxes]).reshape(-1, 3) for boxes in forecast_boxes]
@@ -585,7 +597,7 @@ def quaternion_yaw(q: Quaternion) -> float:
     return yaw
 
 
-def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainval_forecast", nsweeps=20, filter_zero=True, timesteps=7):
+def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainval_forecast", nsweeps=20, filter_zero=True, timesteps=7, past=False):
     nusc = NuScenes(version=version, dataroot=root_path, verbose=True)
     available_vers = ["v1.0-trainval", "v1.0-test", "v1.0-mini"]
     assert version in available_vers
