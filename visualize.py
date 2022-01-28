@@ -48,7 +48,6 @@ parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument('--dataset', default="nusc")
 parser.add_argument('--rootDirectory', default="/home/ubuntu/Workspace/Data/nuScenes/")
 parser.add_argument('--outputDirectory', default="Visuals/")
-parser.add_argument("--dets_only", action="store_true")
 
 args = parser.parse_args()
 
@@ -58,7 +57,6 @@ model = args.model
 forecast = args.forecast
 architecture = args.architecture
 dataset = args.dataset
-dets_only = args.dets_only
 
 rootDirectory = args.rootDirectory
 outputDirectory = args.outputDirectory
@@ -89,66 +87,55 @@ else:
     gt_boxes = load_gt(nusc, "val", DetectionBox, verbose=True, forecast=forecast)
     pickle.dump(gt_boxes, open(rootDirectory + "/gt.pkl", "wb"))
 
-classname = ["car"]
-
 scenes = {}
 for sample_token in tqdm(gt_boxes.boxes.keys()):
     gt = gt_boxes.boxes[sample_token]
-
-    if sample_token not in pred_boxes.boxes.keys():
-        continue
-
-    gt = [box for box in gt if box.detection_name in classname]
+    gt = [box for box in gt if box.detection_name == "car"]
 
     if len(gt) == 0:
         continue
-
-    forecast_match = [[0.5, 1, 2, 4],
-                  [0.58, 1.17, 2.53, 4.67],
-                  [0.66, 1.33, 2.67, 5.33],
-                  [0.75, 1.5, 3, 6],
-                  [0.83, 1.67, 3.33, 6.67],
-                  [0.92, 1.83, 3.67, 7.33],
-                  [1, 2, 4, 8]
-                  ]
-
-    match_pred = []
-    pred_boxes_list = pred_boxes.boxes[sample_token]
-    pred_confs = [box.detection_score for box in pred_boxes_list]
+    
+    pred = pred_boxes.boxes[sample_token]    
+    pred_confs = [box.forecast_score for box in pred]
     sortind = [i for (v, i) in sorted((v, i) for (i, v) in enumerate(pred_confs))][::-1]
+    color = len(pred) * [("r", "r", "r")]
 
     taken = set()  # Initially no gt bounding box is matched.
+    fid = set()
     for ind in sortind:
-        pred_box = pred_boxes_list[ind]
+        pred_box = pred[ind].forecast_boxes[0]
 
-        min_dist = forecast * [np.inf]
+        if pred[ind].forecast_id in fid:
+            color[ind] = ("m", "m", "m")
+            continue 
+
+        min_dist = np.inf
         match_gt_idx = None
 
         for gt_idx, gt_box in enumerate(gt):
 
             # Find closest match among ground truth boxes
-            if gt_box.detection_name in classname and not gt_idx in taken:
-                this_distance = [center_distance(gt_box.forecast_boxes[t], pred_boxes_list[ind].forecast_boxes[t]) for t in range(forecast)]
-                if np.sum(this_distance) < np.sum(min_dist):
+            if not gt_idx in taken:
+                this_distance = center_distance(gt_box.forecast_boxes[0], pred_box)
+            
+                if this_distance < min_dist:
                     min_dist = this_distance
                     match_gt_idx = gt_idx
-     
 
         # If the closest match is close enough according to threshold we have a match!
-        is_match = all([min_dist[t] < forecast_match[t][0] for t in range(forecast)])
-                
+        is_match = min_dist < 0.5
 
         if is_match:
-            match_pred.append(pred_box)
-
-
-
-    visualize_sample_forecast(nusc, sample_token, gt, match_pred, classname=classname, dets_only=dets_only, savepath="{}".format("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection/{sample_token}.png".format(outputDirectory=outputDirectory,
-                                                                                                                                                                                                                              experiment=experiment, 
-                                                                                                                                                                                                                              dataset=dataset,
-                                                                                                                                                                                                                              architecture=architecture, 
-                                                                                                                                                                                                                              model=model,
-                                                                                                                                                                                                                              sample_token=sample_token)))
+            taken.add(match_gt_idx)
+            fid.add(pred[ind].forecast_id)
+            color[ind] = ("b", "b", "b")
+            
+    visualize_sample_forecast(nusc, sample_token, gt, pred, color, savepath="{}".format("{outputDirectory}/{experiment}/{dataset}_{architecture}_{model}_detection/{sample_token}.png".format(outputDirectory=outputDirectory,
+                                                                                                                                                                                                experiment=experiment, 
+                                                                                                                                                                                                dataset=dataset,
+                                                                                                                                                                                                architecture=architecture, 
+                                                                                                                                                                                                model=model,
+                                                                                                                                                                                                sample_token=sample_token)))
 
     scene_token = nusc.get('sample', sample_token)['scene_token']
     

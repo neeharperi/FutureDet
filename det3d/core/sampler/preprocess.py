@@ -796,7 +796,7 @@ def global_rotation(gt_boxes, points, rotation=np.pi / 4):
         gt_boxes[i][:, -2] += noise_rotation
         gt_boxes[i][:, -1] += noise_rotation
 
-    return gt_boxes, points
+    return gt_boxes, points, noise_rotation
 
 
 def random_flip(gt_boxes, points, probability=0.5):
@@ -814,6 +814,7 @@ def random_flip(gt_boxes, points, probability=0.5):
 
 def random_flip_both(gt_boxes, points, probability=0.5, flip_coor=None):
     # x flip 
+    ret_flips = []
     enable = np.random.choice(
         [False, True], replace=False, p=[1 - probability, probability]
     )
@@ -828,7 +829,7 @@ def random_flip_both(gt_boxes, points, probability=0.5, flip_coor=None):
             if gt_boxes[i].shape[1] > 7:  # y axis: x, y, z, w, h, l, vx, vy, r
                 gt_boxes[i][:, 7] = -gt_boxes[i][:, 7]
                 gt_boxes[i][:, 9] = -gt_boxes[i][:, 9]
-
+    ret_flips.append(enable)
     # y flip 
     enable = np.random.choice(
         [False, True], replace=False, p=[1 - probability, probability]
@@ -851,8 +852,9 @@ def random_flip_both(gt_boxes, points, probability=0.5, flip_coor=None):
             if gt_boxes[i].shape[1] > 7:  # y axis: x, y, z, w, h, l, vx, vy, r
                 gt_boxes[i][:, 6] = -gt_boxes[i][:, 6]
                 gt_boxes[i][:, 8] = -gt_boxes[i][:, 8]
-    
-    return gt_boxes, points
+    ret_flips.append(enable)
+
+    return gt_boxes, points, ret_flips
 
 
 def global_scaling_v2(gt_boxes, points, min_scale=0.95, max_scale=1.05):
@@ -863,7 +865,7 @@ def global_scaling_v2(gt_boxes, points, min_scale=0.95, max_scale=1.05):
         gt_boxes[i][:, :-2] *= noise_scale
         #gt_boxes[i][:, :-1] *= noise_scale
 
-    return gt_boxes, points
+    return gt_boxes, points, noise_scale
 
 
 def global_rotation_v2(gt_boxes, points, min_rad=-np.pi / 4, max_rad=np.pi / 4):
@@ -987,7 +989,7 @@ def global_translate_(gt_boxes, points, noise_translate_std):
     for i in range(len(gt_boxes)):
         gt_boxes[i][:, :3] += noise_translate
 
-    return gt_boxes, points
+    return gt_boxes, points, noise_translate[0]
 
 
 if __name__ == "__main__":

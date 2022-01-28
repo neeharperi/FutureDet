@@ -10,7 +10,7 @@ REVERSE=False
 SPARSE=False
 DENSE=True
 BEV_MAP=True
-FORECAST_FEATS=False
+FORECAST_FEATS=True
 CLASSIFY=False
 WIDE=False
 
@@ -104,7 +104,7 @@ test_cfg = dict(
 # dataset settings
 dataset_type = "NuScenesDataset"
 nsweeps = 20
-data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
+data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast_map"
 
 if sampler_type == "standard":
     sample_group=[

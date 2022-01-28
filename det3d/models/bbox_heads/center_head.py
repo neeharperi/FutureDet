@@ -323,20 +323,19 @@ class CenterHead(nn.Module):
             share_conv_channel = 512
 
         if self.bev_map:
-            self.shared_conv = nn.Sequential(
-                nn.Conv2d(in_channels + 5, share_conv_channel,
-                kernel_size=3, padding=1, bias=True),
-                nn.BatchNorm2d(share_conv_channel),
-                nn.ReLU(inplace=True)
+            self.bev_conv = nn.Sequential(
+                nn.Conv2d(6, 16, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(16), nn.ReLU(inplace=True),
+                nn.Conv2d(16, 32, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
+                nn.Conv2d(32, share_conv_channel, kernel_size=3, padding=1, bias=True), nn.BatchNorm2d(share_conv_channel), nn.ReLU(inplace=True),
             )
 
-        else:
-            self.shared_conv = nn.Sequential(
-                nn.Conv2d(in_channels, share_conv_channel,
-                kernel_size=3, padding=1, bias=True),
-                nn.BatchNorm2d(share_conv_channel),
-                nn.ReLU(inplace=True)
-            )
+        
+        self.shared_conv = nn.Sequential(
+            nn.Conv2d(in_channels, share_conv_channel,
+            kernel_size=3, padding=1, bias=True),
+            nn.BatchNorm2d(share_conv_channel),
+            nn.ReLU(inplace=True)
+        )
 
         for i, num_cls in enumerate(self.num_classes):
             heads = copy.deepcopy(common_heads)
@@ -365,11 +364,11 @@ class CenterHead(nn.Module):
     def forward(self, x, bev_map=None, *kwargs):
         ret_dicts = []
 
-        if self.bev_map:
-            x = torch.cat([bev_map, x], axis=1)
-
         x = self.shared_conv(x)
 
+        if self.bev_map:
+            x = x + self.bev_conv(bev_map)
+            
         for i, task in enumerate(self.tasks):
             if i != 0 and self.forecast_feature:
                 feature_map = torch.cat([x, ret_dicts[i - 1]["feats"]], axis=1) 
@@ -592,7 +591,7 @@ class CenterHead(nn.Module):
             for hm in hms:
                 pred_dict["hm"] = hm.unsqueeze(1)
                 forecast_preds_dicts.append(copy.deepcopy(pred_dict))
-                
+        
         else:
             forecast_preds_dicts = preds_dicts
 

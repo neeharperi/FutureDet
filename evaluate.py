@@ -95,11 +95,15 @@ parser.add_argument("--tp_pct", default=0.6)
 parser.add_argument("--static_only", action="store_true")
 parser.add_argument("--eval_only", action="store_true")
 parser.add_argument("--forecast_mode", default="velocity_forward")
+parser.add_argument("--classname", default="car")
 parser.add_argument("--rerank", default="last")
 parser.add_argument("--cohort_analysis", action="store_true")
 parser.add_argument("--jitter", action="store_true")
 parser.add_argument("--association_oracle", action="store_true")
 parser.add_argument("--nms", action="store_true")
+parser.add_argument("--past", action="store_true")
+parser.add_argument("--det_eval", action="store_true")
+
 parser.add_argument("--K", default=1)
 parser.add_argument("--C", default=1)
 
@@ -117,12 +121,15 @@ extractBox = args.extractBox
 modelCheckPoint = args.modelCheckPoint
 forecast = args.forecast
 forecast_mode = args.forecast_mode
+classname = args.classname
 rerank = args.rerank
 tp_pct = args.tp_pct
 static_only = args.static_only
 eval_only = args.eval_only
 cohort_analysis = args.cohort_analysis
 nms = args.nms
+past = args.past
+det_eval = args.det_eval
 K = args.K
 C = args.C
 jitter = args.jitter
@@ -143,13 +150,14 @@ track_dir = "models/{experiment}/{dataset}_{architecture}_{model}_tracking".form
                                                                                    dataset=dataset)
 print("Evaluating Detection Results for " + modelCheckPoint)
 
-os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint}.pth --modelCheckPoint {modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --rerank {rerank} --tp_pct {tp_pct} {static_only} {eval_only} {cohort_analysis} {nms} {jitter} {association_oracle} --K {K} --C {C} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
+os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint}.pth --modelCheckPoint {modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --classname {classname} --rerank {rerank} --tp_pct {tp_pct} {static_only} {eval_only} {det_eval} {cohort_analysis} {nms} {past} {jitter} {association_oracle} --K {K} --C {C} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
                                                                                                                                                                                     configPath=configPath, 
                                                                                                                                                                                     extractBox= "--extractBox" if extractBox else "", 
                                                                                                                                                                                     det_dir=det_dir, 
                                                                                                                                                                                     modelCheckPoint=modelCheckPoint,
                                                                                                                                                                                     forecast=forecast,
                                                                                                                                                                                     forecast_mode=forecast_mode,
+                                                                                                                                                                                    classname=classname,
                                                                                                                                                                                     rerank=rerank,
                                                                                                                                                                                     tp_pct=tp_pct,
                                                                                                                                                                                     K=K,
@@ -160,6 +168,8 @@ os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extr
                                                                                                                                                                                     jitter= "--jitter" if jitter else "",
                                                                                                                                                                                     association_oracle= "--association_oracle" if association_oracle else "",
                                                                                                                                                                                     nms= "--nms" if nms else "",
+                                                                                                                                                                                    past= "--past" if past else "",
+                                                                                                                                                                                    det_eval= "--det_eval" if det_eval else "",
                                                                                                                                                                                     split=split,
                                                                                                                                                                                     version=version,
                                                                                                                                                                                     rootDirectory=rootDirectory))      

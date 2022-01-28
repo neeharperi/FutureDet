@@ -1,5 +1,6 @@
 from datetime import time
 import numpy as np
+import cv2
 import pickle
 import pdb 
 from pathlib import Path
@@ -503,8 +504,10 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20,
 
         assert (len(info["sweeps"]) == nsweeps - 1), f"sweep {curr_sd_rec['token']} only has {len(info['sweeps'])} sweeps, you should duplicate to sweep num {nsweeps-1}"
         """ read from api """
-
         if not test:
+            ego_map = nusc.get_ego_centric_map(sweeps[0]["sample_data_token"])
+            bev = cv2.resize(ego_map, dsize=(180, 180), interpolation=cv2.INTER_CUBIC)
+
             annotations = [nusc.get("sample_annotation", token) for token in sample["anns"]]
             forecast_boxes, forecast_annotations, forecast_trajectory = get_annotations(nusc, annotations, ref_boxes, timesteps, past)
 
@@ -538,6 +541,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20,
                     info["gt_boxes_token"] = np.array(tokens)
                     info["gt_boxes_rtoken"] = np.array(rtokens)
                     info["gt_trajectory"] = np.array(trajectory)
+                    info["bev"] = bev
 
                 else:
                     info["gt_boxes"] = np.array(gt_boxes)[mask, :]
@@ -547,7 +551,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20,
                     info["gt_boxes_token"] = np.array(tokens)[mask]
                     info["gt_boxes_rtoken"] = np.array(rtokens)[mask]
                     info["gt_trajectory"] = np.array(trajectory)[mask]
-
+                    info["bev"] = bev
             else:
                 mask = np.array([(anno['num_lidar_pts'] + anno['num_radar_pts']) >0 for anno in annotations], dtype=bool).reshape(-1)
 
@@ -570,6 +574,7 @@ def _fill_trainval_infos(nusc, train_scenes, val_scenes, test=False, nsweeps=20,
                 info["gt_boxes_rtoken"] = tokens
                 info["gt_boxes_rtoken"] = tokens
                 info["gt_trajectory"] = trajectory
+                info['bev'] = bev
 
         if sample["scene_token"] in train_scenes:
             train_nusc_infos.append(info)
@@ -659,7 +664,8 @@ def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainv
             pickle.dump(val_nusc_infos, f)
 
 
-def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, static_only, cohort_analysis, topK, root, association_oracle):
+def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, static_only,
+              cohort_analysis, topK, root, association_oracle, past, det_eval):
     # nusc = NuScenes(version=version, dataroot=str(root_path), verbose=True)
     cfg = config_factory(eval_version)
 
@@ -676,6 +682,8 @@ def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_p
         cohort_analysis=cohort_analysis,
         topK=topK,
         root=root,
-        association_oracle=association_oracle
+        association_oracle=association_oracle,
+        past=past,
+        det_eval=det_eval,
     )
     metrics_summary = nusc_eval.main(plot_examples=10,cohort_analysis=cohort_analysis)
