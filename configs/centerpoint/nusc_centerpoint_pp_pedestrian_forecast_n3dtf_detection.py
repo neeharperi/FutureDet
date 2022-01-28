@@ -82,6 +82,7 @@ assigner = dict(
     max_objs=1000,
     min_radius=2,
     radius_mult=True,
+    sampler_type=sampler_type,
 )
 
 
