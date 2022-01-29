@@ -17,8 +17,8 @@ WIDE=False
 sampler_type = "trajectory"
 
 tasks = [
-    dict(num_class=1, class_names=["car"]),
-    #dict(num_class=1, class_names=["pedestrian"]),
+    #dict(num_class=1, class_names=["car"]),
+    dict(num_class=1, class_names=["pedestrian"]),
 ]
 
 class_names = list(itertools.chain(*[t["class_names"] for t in tasks]))
@@ -146,6 +146,7 @@ train_preprocessor = dict(
     shuffle_points=True,
     global_rot_noise=[-0.3925, 0.3925],
     global_scale_noise=[0.95, 1.05],
+    global_translate_std=0.5,
     db_sampler=db_sampler,
     class_names=class_names,
     sampler_type=sampler_type

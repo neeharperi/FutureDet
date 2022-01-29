@@ -123,10 +123,10 @@ class Preprocess(object):
             points = res["lidar"]["combined"]
         else:
             raise NotImplementedError
+        
+        anno_dict = res["lidar"]["annotations"]
 
         if self.mode == "train":
-            anno_dict = res["lidar"]["annotations"]
-
             gt_dict = {
                 "gt_boxes": anno_dict["boxes"],
                 "gt_names": [np.array(box).reshape(-1) for box in anno_dict["names"]],
@@ -191,12 +191,6 @@ class Preprocess(object):
             gt_dict["gt_boxes"], points, scale_aug = prep.global_scaling_v2(gt_dict["gt_boxes"], points, *self.global_scaling_noise)
             gt_dict["gt_boxes"], points, trans_aug = prep.global_translate_(gt_dict["gt_boxes"], points, noise_translate_std=self.global_translate_std) 
 
-            bev_map, xbins, ybins, zbins, = z_offset(points)
-            bev = get_mask(anno_dict["bev"], t=trans_aug, angle=rot_aug, flip=flip_aug, scale=scale_aug)
-
-            bev = np.concatenate((bev_map, bev[...,None]), axis=-1)
-            res["lidar"]["bev_map"] = bev.transpose(2, 0, 1)
-
         elif self.no_augmentation:
             gt_boxes_mask = [np.array([n in self.class_names for n in gt_dict["gt_names"][i]], dtype=np.bool_) for i in range(len(gt_dict["gt_names"]))]
             _dict_select(gt_dict, gt_boxes_mask)
@@ -208,6 +202,18 @@ class Preprocess(object):
             rng = np.random.default_rng(0)
             rng.shuffle(points)
         
+        if self.mode != "train":
+            trans_aug = [0, 0]
+            rot_aug = 0
+            flip_aug = [False, False] 
+            scale_aug = 1 
+
+        bev_map, xbins, ybins, zbins, = z_offset(points)
+        bev = get_mask(anno_dict["bev"], t=trans_aug, angle=rot_aug, flip=flip_aug, scale=scale_aug)
+
+        bev = np.concatenate((bev_map, bev[...,None]), axis=-1)
+        res["lidar"]["bev_map"] = bev.transpose(2, 0, 1)
+
         res["lidar"]["points"] = points
 
         if self.mode == "train":

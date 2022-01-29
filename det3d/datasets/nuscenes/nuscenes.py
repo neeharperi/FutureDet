@@ -376,7 +376,7 @@ def multi_future(forecast_boxes):
                         continue 
 
             dist_mat = distance_matrix(pred_center, pred_center)
-            idxa, idxb = np.where(dist_mat < 0.5)
+            idxa, idxb = np.where(dist_mat < 0.25)
 
             L = []
             for ida, idb in zip(idxa, idxb):
