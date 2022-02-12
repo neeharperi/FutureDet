@@ -45,6 +45,7 @@ parser.add_argument('--experiment', default="FutureDetection")
 parser.add_argument('--model', default="forecast_n3dtf")
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--architecture', default="centerpoint")
+parser.add_argument('--classname', default="car")
 parser.add_argument('--dataset', default="nusc")
 parser.add_argument('--rootDirectory', default="/home/ubuntu/Workspace/Data/nuScenes/")
 parser.add_argument('--outputDirectory', default="Visuals/")
@@ -56,13 +57,14 @@ experiment = args.experiment
 model = args.model
 forecast = args.forecast
 architecture = args.architecture
+classname = args.classname
 dataset = args.dataset
 
 rootDirectory = args.rootDirectory
 outputDirectory = args.outputDirectory
 
 
-det_dir = "models/{experiment}/{dataset}_{architecture}_{model}_detection/infos_val_20sweeps_withvelo_filter_True.json".format(architecture=architecture,
+det_dir = "models/{experiment}/{dataset}_{architecture}_{model}_detection/infos_val_20sweeps_withvelo_filter_True_pp.json".format(architecture=architecture,
                                                                                    experiment=experiment,
                                                                                    model=model,
                                                                                    dataset=dataset)
@@ -90,7 +92,7 @@ else:
 scenes = {}
 for sample_token in tqdm(gt_boxes.boxes.keys()):
     gt = gt_boxes.boxes[sample_token]
-    gt = [box for box in gt if box.detection_name == "car"]
+    gt = [box for box in gt if box.detection_name == classname]
 
     if len(gt) == 0:
         continue
@@ -106,7 +108,7 @@ for sample_token in tqdm(gt_boxes.boxes.keys()):
         pred_box = pred[ind].forecast_boxes[0]
 
         if pred[ind].forecast_id in fid:
-            color[ind] = ("m", "m", "m")
+            color[ind] = ("c", "c", "c")
             continue 
 
         min_dist = np.inf
@@ -123,7 +125,7 @@ for sample_token in tqdm(gt_boxes.boxes.keys()):
                     match_gt_idx = gt_idx
 
         # If the closest match is close enough according to threshold we have a match!
-        is_match = min_dist < 0.5
+        is_match = min_dist < 1
 
         if is_match:
             taken.add(match_gt_idx)

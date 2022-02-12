@@ -665,7 +665,7 @@ def create_nuscenes_infos(root_path, version="v1.0-trainval", experiment="trainv
 
 
 def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_pct, static_only,
-              cohort_analysis, topK, root, association_oracle, past, det_eval):
+              cohort_analysis, topK, root, association_oracle, past, det_eval, nogroup):
     # nusc = NuScenes(version=version, dataroot=str(root_path), verbose=True)
     cfg = config_factory(eval_version)
 
@@ -685,5 +685,6 @@ def eval_main(nusc, eval_version, res_path, eval_set, output_dir, forecast, tp_p
         association_oracle=association_oracle,
         past=past,
         det_eval=det_eval,
+        nogroup=nogroup
     )
     metrics_summary = nusc_eval.main(plot_examples=10,cohort_analysis=cohort_analysis)

@@ -100,6 +100,8 @@ parser.add_argument("--rerank", default="last")
 parser.add_argument("--cohort_analysis", action="store_true")
 parser.add_argument("--jitter", action="store_true")
 parser.add_argument("--association_oracle", action="store_true")
+parser.add_argument("--postprocess", action="store_true")
+parser.add_argument("--nogroup", action="store_true")
 parser.add_argument("--nms", action="store_true")
 parser.add_argument("--past", action="store_true")
 parser.add_argument("--det_eval", action="store_true")
@@ -134,6 +136,8 @@ K = args.K
 C = args.C
 jitter = args.jitter
 association_oracle = args.association_oracle
+postprocess = args.postprocess
+nogroup = args.nogroup
 
 configPath = "{dataset}_{architecture}_{model}_detection.py".format(dataset=dataset,
                                                                     architecture=architecture,
@@ -150,7 +154,7 @@ track_dir = "models/{experiment}/{dataset}_{architecture}_{model}_tracking".form
                                                                                    dataset=dataset)
 print("Evaluating Detection Results for " + modelCheckPoint)
 
-os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint}.pth --modelCheckPoint {modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --classname {classname} --rerank {rerank} --tp_pct {tp_pct} {static_only} {eval_only} {det_eval} {cohort_analysis} {nms} {past} {jitter} {association_oracle} --K {K} --C {C} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
+os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint}.pth --modelCheckPoint {modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --classname {classname} --rerank {rerank} --tp_pct {tp_pct} {static_only} {eval_only} {det_eval} {cohort_analysis} {nms} {past} {jitter} {association_oracle} {postprocess} {nogroup} --K {K} --C {C} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
                                                                                                                                                                                     configPath=configPath, 
                                                                                                                                                                                     extractBox= "--extractBox" if extractBox else "", 
                                                                                                                                                                                     det_dir=det_dir, 
@@ -167,6 +171,8 @@ os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extr
                                                                                                                                                                                     cohort_analysis= "--cohort_analysis" if cohort_analysis else "",
                                                                                                                                                                                     jitter= "--jitter" if jitter else "",
                                                                                                                                                                                     association_oracle= "--association_oracle" if association_oracle else "",
+                                                                                                                                                                                    postprocess= "--postprocess" if postprocess else "",
+                                                                                                                                                                                    nogroup= "--nogroup" if nogroup else "",
                                                                                                                                                                                     nms= "--nms" if nms else "",
                                                                                                                                                                                     past= "--past" if past else "",
                                                                                                                                                                                     det_eval= "--det_eval" if det_eval else "",
@@ -208,7 +214,7 @@ detection_dataFrame = pd.DataFrame.from_dict(detection_dataFrame)
 if not os.path.isdir("results/" + experiment + "/" + model):
     os.makedirs("results/" + experiment + "/" + model)
 
-filename = "results/{experiment}/{model}/{dataset}_{architecture}_{model}_{forecast}_{forecast_mode}_{rerank}_tp{tp_pct}_K{K}_{cohort}{static_only}{nms}{association_oracle}{jitter}detection_{modelCheckPoint}.csv".format(experiment=experiment, model=model, dataset=dataset, architecture=architecture, forecast="t{}".format(forecast), forecast_mode=forecast_mode, rerank=rerank, tp_pct=tp_pct, K=K, jitter = "{}jitter_".format(C) if jitter else "", cohort="cohort_" if cohort_analysis else "", static_only = "static_" if static_only else "", nms = "nms_" if nms else "", association_oracle = "oracle_" if association_oracle else "", modelCheckPoint=modelCheckPoint)
+filename = "results/{experiment}/{model}/{dataset}_{architecture}_{model}_{forecast}_{forecast_mode}_{rerank}_tp{tp_pct}_K{K}_{cohort}{static_only}{nms}{association_oracle}{jitter}{postprocess}detection_{modelCheckPoint}.csv".format(experiment=experiment, model=model, dataset=dataset, architecture=architecture, forecast="t{}".format(forecast), forecast_mode=forecast_mode, rerank=rerank, tp_pct=tp_pct, K=K, jitter = "{}jitter_".format(C) if jitter else "", cohort="cohort_" if cohort_analysis else "", static_only = "static_" if static_only else "", nms = "nms_" if nms else "", association_oracle = "oracle_" if association_oracle else "", postprocess = "pp_" if postprocess else "", modelCheckPoint=modelCheckPoint)
 detection_dataFrame.to_csv(filename, index=False)
 
 #########################################################################

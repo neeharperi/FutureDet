@@ -43,7 +43,7 @@ def forecast_voxelization(output):
     return voxels, coordinates, num_points
 
 def z_offset(points, 
-                  meters_max=54,
+                  meters_max=45,
                   pixels_per_meter=2,
                   hist_max_per_pixel=50,
                   zbins=np.array([-3.,   0.0, 1., 2.,  3., 10.]),
@@ -82,8 +82,8 @@ def get_mask(mask, t, angle, flip, scale):
     rot_mat = cv2.getRotationMatrix2D((90, 90), angle, scale)
     mask = cv2.warpAffine(mask, rot_mat, (180, 180))
 
-    M = np.float32([[1, 0, -t[0]],
-                    [0, 1, -t[1]]])
+    M = np.float32([[1, 0, t[0]],
+                    [0, 1, t[1]]])
 
     mask = cv2.warpAffine(mask, M, (180, 180))
 
@@ -208,10 +208,11 @@ class Preprocess(object):
             flip_aug = [False, False] 
             scale_aug = 1 
 
-        bev_map, xbins, ybins, zbins, = z_offset(points)
+        #bev_map, xbins, ybins, zbins, = z_offset(points)
         bev = get_mask(anno_dict["bev"], t=trans_aug, angle=rot_aug, flip=flip_aug, scale=scale_aug)
 
-        bev = np.concatenate((bev_map, bev[...,None]), axis=-1)
+        #bev = np.concatenate((bev_map, bev[...,None]), axis=-1)
+
         res["lidar"]["bev_map"] = bev.transpose(2, 0, 1)
 
         res["lidar"]["points"] = points

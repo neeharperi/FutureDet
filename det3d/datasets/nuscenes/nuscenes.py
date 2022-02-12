@@ -10,11 +10,14 @@ import operator
 import numpy as np
 import os
 import torch 
+import cv2
 import pdb
 from pathlib import Path
 from copy import deepcopy
 from collections import defaultdict
 from itertools import tee
+from nuscenes.utils.geometry_utils import view_points
+from shapely.geometry import Polygon
 
 try:
     from nuscenes.nuscenes import NuScenes
@@ -206,7 +209,13 @@ def match_boxes(ret_boxes):
     
     return match_boxes
 
-def tracker(time, ret_boxes, past):
+def tracker(classname, time, ret_boxes, past):
+
+    if classname == "car":
+        thresh = 2
+    else:
+        thresh = 0.75
+
     if past:
         ret_boxes = ret_boxes[::-1]
     
@@ -214,6 +223,7 @@ def tracker(time, ret_boxes, past):
     reverse_ret_boxes = ret_boxes[::-1]
     trajectory = []
     
+    '''
     idx, dist = [], []
     for timesteps, tm in zip(window(reverse_ret_boxes, 2), reverse_time):
         current, previous = timesteps
@@ -240,7 +250,7 @@ def tracker(time, ret_boxes, past):
         trajectory_idx = [i]
         void = False
         for ind, dis in zip(idx, dist):
-            if dis[trajectory_idx[-1]] > 2:
+            if dis[trajectory_idx[-1]] > thresh:
                 void = True 
 
             trajectory_idx.append(ind[trajectory_idx[-1]])
@@ -255,9 +265,8 @@ def tracker(time, ret_boxes, past):
 
         forecast = forecast[::-1]
         trajectory.append(forecast)
-    
+    '''
     ##########################################################################
-
     idx, dist = [], []
     for timesteps, tm in zip(window(ret_boxes, 2), time):
         current, future = timesteps
@@ -284,7 +293,7 @@ def tracker(time, ret_boxes, past):
         trajectory_idx = [i]
         void = False
         for ind, dis in zip(idx, dist):
-            if dis[trajectory_idx[-1]] > 2:
+            if dis[trajectory_idx[-1]] > thresh:
                 void = True 
 
             trajectory_idx.append(ind[trajectory_idx[-1]])
@@ -298,6 +307,7 @@ def tracker(time, ret_boxes, past):
             forecast.append(boxes[ind])
 
         trajectory.append(forecast)
+
     ##########################################################################
     for idx in np.arange(len(ret_boxes[0])):
         curr = ret_boxes[0][idx]
@@ -310,7 +320,7 @@ def tracker(time, ret_boxes, past):
             forecast.append(new_box)
 
         trajectory.append(forecast)
-    
+
     for idx in np.arange(len(ret_boxes[-1])):
         curr = ret_boxes[-1][idx]
         velocity = curr.velocity
@@ -323,7 +333,7 @@ def tracker(time, ret_boxes, past):
 
         forecast = forecast[::-1]
         trajectory.append(forecast)
-    
+
     return trajectory
     
 def box_serialize(box, token, name, attr):
@@ -366,51 +376,95 @@ def network_split(L):
 
     return ret
 
-def multi_future(forecast_boxes):
+def multi_future(forecast_boxes, classname):
+    if classname == "car":
+        thresh = 0.25
+    else:
+        thresh = 0.125
+
     for sample_token in forecast_boxes.keys():
-        sample_boxes = []
-        for class_name in ["car", "pedestrian"]:
-            boxes = [box for box in forecast_boxes[sample_token] if class_name in box["detection_name"]]
-            pred_center = box_center_(boxes)
-            if len(pred_center) == 0:
-                        continue 
+        boxes = [box for box in forecast_boxes[sample_token] if classname in box["detection_name"]]
+        pred_center = box_center_(boxes)
+        if len(pred_center) == 0:
+                    continue 
 
-            dist_mat = distance_matrix(pred_center, pred_center)
-            idxa, idxb = np.where(dist_mat < 0.25)
+        dist_mat = distance_matrix(pred_center, pred_center)
+        idxa, idxb = np.where(dist_mat < thresh)
 
-            L = []
-            for ida, idb in zip(idxa, idxb):
-                L.append((ida, idb))
+        L = []
+        for ida, idb in zip(idxa, idxb):
+            L.append((ida, idb))
 
-            net = network_split(L)
-            for ida, idb in zip(idxa, idxb):
-                forecast_id = net[(ida, idb)]
-                boxes[ida]["forecast_id"] = forecast_id
-                boxes[idb]["forecast_id"] = forecast_id
+        net = network_split(L)
+        for ida, idb in zip(idxa, idxb):
+            forecast_id = net[(ida, idb)]
+            boxes[ida]["forecast_id"] = forecast_id
+            boxes[idb]["forecast_id"] = forecast_id
 
-                detection_score = boxes[ida]["forecast_id"]
-                forecast_score = boxes[ida]["forecast_id"]
+            detection_score = boxes[ida]["forecast_id"]
+            forecast_score = boxes[ida]["forecast_id"]
 
-                for box in boxes[ida]["forecast_boxes"]:
-                    box["detection_score"] = detection_score
-                    box["forecast_score"] = forecast_score
-                    box["forecast_id"] = forecast_id
+            for box in boxes[ida]["forecast_boxes"]:
+                box["detection_score"] = detection_score
+                box["forecast_score"] = forecast_score
+                box["forecast_id"] = forecast_id
 
-                detection_score = boxes[idb]["forecast_id"]
-                forecast_score = boxes[idb]["forecast_id"]
+            detection_score = boxes[idb]["forecast_id"]
+            forecast_score = boxes[idb]["forecast_id"]
 
-                for box in boxes[idb]["forecast_boxes"]:
-                    box["detection_score"] = detection_score
-                    box["forecast_score"] = forecast_score
-                    box["forecast_id"] = forecast_id
+            for box in boxes[idb]["forecast_boxes"]:
+                box["detection_score"] = detection_score
+                box["forecast_score"] = forecast_score
+                box["forecast_id"] = forecast_id
             
-            sample_boxes += boxes
-
-        forecast_boxes[sample_token] = sample_boxes
+        forecast_boxes[sample_token] = boxes
 
     return forecast_boxes
 
-def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, jitter, K, C, past, det_eval):
+def process_trajectories(nusc, sample_token, ret_boxes, forecast, train_dist):
+    sample_rec = nusc.get('sample', sample_token)
+    sd_record = nusc.get('sample_data', sample_rec['data']['LIDAR_TOP'])
+    cs_record = nusc.get('calibrated_sensor', sd_record['calibrated_sensor_token'])
+    pose_record = nusc.get('ego_pose', sd_record['ego_pose_token'])
+    ego_map = nusc.get_ego_centric_map(sd_record["token"])
+    bev = cv2.resize(ego_map, dsize=(50, 50), interpolation=cv2.INTER_CUBIC).T
+
+    test_trajectories = []
+    for ret_box in ret_boxes:
+        box = ret_box[0]
+
+        translation = box.center
+        velocity = box.velocity[:2]
+        rotation = [box.orientation[0], box.orientation[1], box.orientation[2], box.orientation[3]]
+        
+        position = [(velocity, rotation)] + [ret_box[i].center - translation for i in range(1, forecast)]
+        test_trajectories.append(position)
+
+    test_dist = []
+    for trajectory in test_trajectories:
+        velocity, rotation = trajectory[0]
+        test_dist.append(np.array(list(velocity) + rotation + list(np.hstack(trajectory[1:]))))
+
+    test_dist = np.array(test_dist)
+
+    dist = distance_matrix(train_dist, test_dist)
+    idx = np.argmin(dist, axis=0)
+    matched_trajectory = (train_dist[idx])
+
+    out_boxes = [] 
+    for i, out in enumerate(zip(ret_boxes, matched_trajectory)):
+        ret_box, trajectory = out
+        translation = deepcopy(ret_box[0].center)
+
+        trajectory = trajectory[6:]
+        for i in range(forecast - 1):
+            ret_box[i + 1].center = translation + trajectory[3*i:3*i+3]
+
+        out_boxes.append(deepcopy(ret_box))
+
+    return out_boxes
+
+def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, classname, jitter, K, C, past, det_eval, train_dist, postprocess):
     ret_boxes, ret_tokens = [], []
 
     for t in range(forecast):
@@ -522,7 +576,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
 
                 trajectory_boxes.append(boxes)
     else:
-        forecast_boxes = tracker(time, ret_boxes, past)
+        forecast_boxes = tracker(classname, time, ret_boxes, past)
 
     if forecast_mode in ["velocity_constant", "velocity_forward", "velocity_reverse"]:
         if forecast_mode == "velocity_reverse":
@@ -660,9 +714,14 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
         
     elif forecast_mode == "velocity_dense":
         ret_boxes = forecast_boxes 
+        
+        if postprocess:
+            sample_token = nusc.get("sample", ret_tokens[0])["token"]
+            ret_boxes = process_trajectories(nusc, sample_token, ret_boxes, forecast, train_dist)
 
     else:
         assert False, "Invalid Forecast Mode"
+
 
     if jitter:
         jitter_boxes = []
@@ -873,9 +932,14 @@ class NuScenesDataset(PointCloudDataset):
         return self.get_sensor_data(idx)
 
     def evaluation(self, detections, output_dir=None, testset=False, forecast=7, forecast_mode="velocity_forward", classname="car", rerank="last", tp_pct=0.6, root="/ssd0/nperi/nuScenes", 
-                   static_only=False, cohort_analysis=False, nms=False, past=False, det_eval=False, K=1, C=1, split="val", version="v1.0-trainval", eval_only=False, jitter=False, association_oracle=False):
+                   static_only=False, cohort_analysis=False, nms=False, past=False, det_eval=False, K=1, C=1, split="val", version="v1.0-trainval", eval_only=False, jitter=False, 
+                   association_oracle=False, postprocess=False, nogroup=False):
         self.eval_version = "detection_forecast"
         name = self._info_path.split("/")[-1].split(".")[0]
+
+        if postprocess:
+            name = name + "_pp"
+            
         res_path = str(Path(output_dir) / Path(name + ".json"))
 
         if not testset:
@@ -925,9 +989,17 @@ class NuScenesDataset(PointCloudDataset):
 
             scene_data[scene_token].append(sample_tokens)
         
+        train_trajectories = pickle.load(open("/home/ubuntu/Workspace/CenterForecast/{}_trajectory.pkl".format(classname), "rb"))
+        train_dist = []
+        for trajectory in train_trajectories:
+            velocity, rotation = trajectory[0]
+            train_dist.append(np.array(list(velocity) + rotation + list(np.hstack(trajectory[1:]))))
+
+        train_dist = np.array(train_dist)
+
         if not eval_only:
-            for det_forecast in tqdm(dets):
-                det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, jitter, K, C, past, det_eval)
+            for j, det_forecast in enumerate(tqdm(dets)):
+                det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, classname, jitter, K, C, past, det_eval, train_dist, postprocess)
                 token = tokens[0]
                 annos = []
                 
@@ -973,7 +1045,7 @@ class NuScenesDataset(PointCloudDataset):
                         "detection_name": name,
                         "detection_score": fboxes[0]["detection_score"],
                         "forecast_score" : forecast_score,
-                        "forecast_id" : i, 
+                        "forecast_id" : (i + 1) * (j + 1), 
                         "attribute_name": attr,
                     }
                     annos.append(nusc_anno)
@@ -991,8 +1063,8 @@ class NuScenesDataset(PointCloudDataset):
                 "use_external": False,
             }
             
-            if not forecast_mode == "velocity_dense_dets":
-                nusc_annos["results"] = multi_future(nusc_annos["results"])
+            if not nogroup:
+                nusc_annos["results"] = multi_future(nusc_annos["results"], classname)
 
             if nms:
                 annos = {}
@@ -1041,7 +1113,8 @@ class NuScenesDataset(PointCloudDataset):
                 root=root,
                 association_oracle=association_oracle,
                 past=past,
-                det_eval=det_eval
+                det_eval=det_eval,
+                nogroup=nogroup
             )
 
             with open(Path(output_dir) / "metrics_summary.json", "r") as f:

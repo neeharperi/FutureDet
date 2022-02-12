@@ -190,7 +190,7 @@ test_anno = data_root + "/infos_test_20sweeps_withvelo_filter_True.pkl"
 
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=4,
+    workers_per_gpu=0,
     train=dict(
         type=dataset_type,
         root_path=data_root,
