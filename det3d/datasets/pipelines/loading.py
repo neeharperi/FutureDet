@@ -216,7 +216,7 @@ class LoadPointCloudAnnotations(object):
                 "velocities": velocity,
                 "rvelocities" : rvelocity,
                 "trajectory" : trajectory,
-                "bev" : info["bev"] if "bev" in info else np.zeros((180,180))
+                "bev" : info["bev"] if "bev" in info else np.zeros((1, 180,180))
             }
 
         elif res["type"] == 'WaymoDataset' and "gt_boxes" in info:

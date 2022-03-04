@@ -103,8 +103,6 @@ parser.add_argument("--association_oracle", action="store_true")
 parser.add_argument("--postprocess", action="store_true")
 parser.add_argument("--nogroup", action="store_true")
 parser.add_argument("--nms", action="store_true")
-parser.add_argument("--past", action="store_true")
-parser.add_argument("--det_eval", action="store_true")
 
 parser.add_argument("--K", default=1)
 parser.add_argument("--C", default=1)
@@ -130,8 +128,6 @@ static_only = args.static_only
 eval_only = args.eval_only
 cohort_analysis = args.cohort_analysis
 nms = args.nms
-past = args.past
-det_eval = args.det_eval
 K = args.K
 C = args.C
 jitter = args.jitter
@@ -154,7 +150,7 @@ track_dir = "models/{experiment}/{dataset}_{architecture}_{model}_tracking".form
                                                                                    dataset=dataset)
 print("Evaluating Detection Results for " + modelCheckPoint)
 
-os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint}.pth --modelCheckPoint {modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --classname {classname} --rerank {rerank} --tp_pct {tp_pct} {static_only} {eval_only} {det_eval} {cohort_analysis} {nms} {past} {jitter} {association_oracle} {postprocess} {nogroup} --K {K} --C {C} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
+os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extractBox} --work_dir {det_dir} --checkpoint {det_dir}/{modelCheckPoint}.pth --modelCheckPoint {modelCheckPoint} --forecast {forecast} --forecast_mode {forecast_mode} --classname {classname} --rerank {rerank} --tp_pct {tp_pct} {static_only} {eval_only} {cohort_analysis} {nms} {jitter} {association_oracle} {postprocess} {nogroup} --K {K} --C {C} --split {split} --version {version} --root {rootDirectory}".format(architecture=architecture, 
                                                                                                                                                                                     configPath=configPath, 
                                                                                                                                                                                     extractBox= "--extractBox" if extractBox else "", 
                                                                                                                                                                                     det_dir=det_dir, 
@@ -174,8 +170,6 @@ os.system("python ./tools/dist_test.py configs/{architecture}/{configPath} {extr
                                                                                                                                                                                     postprocess= "--postprocess" if postprocess else "",
                                                                                                                                                                                     nogroup= "--nogroup" if nogroup else "",
                                                                                                                                                                                     nms= "--nms" if nms else "",
-                                                                                                                                                                                    past= "--past" if past else "",
-                                                                                                                                                                                    det_eval= "--det_eval" if det_eval else "",
                                                                                                                                                                                     split=split,
                                                                                                                                                                                     version=version,
                                                                                                                                                                                     rootDirectory=rootDirectory))      

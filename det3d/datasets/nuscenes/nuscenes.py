@@ -209,21 +209,17 @@ def match_boxes(ret_boxes):
     
     return match_boxes
 
-def tracker(classname, time, ret_boxes, past):
+def tracker(classname, time, ret_boxes):
 
     if classname == "car":
         thresh = 2
     else:
         thresh = 0.75
-
-    if past:
-        ret_boxes = ret_boxes[::-1]
     
     reverse_time = time[::-1]
     reverse_ret_boxes = ret_boxes[::-1]
     trajectory = []
-    
-    '''
+    ####################################################################
     idx, dist = [], []
     for timesteps, tm in zip(window(reverse_ret_boxes, 2), reverse_time):
         current, previous = timesteps
@@ -265,8 +261,8 @@ def tracker(classname, time, ret_boxes, past):
 
         forecast = forecast[::-1]
         trajectory.append(forecast)
-    '''
     ##########################################################################
+    
     idx, dist = [], []
     for timesteps, tm in zip(window(ret_boxes, 2), time):
         current, future = timesteps
@@ -309,6 +305,7 @@ def tracker(classname, time, ret_boxes, past):
         trajectory.append(forecast)
 
     ##########################################################################
+    
     for idx in np.arange(len(ret_boxes[0])):
         curr = ret_boxes[0][idx]
         velocity = curr.velocity
@@ -320,7 +317,7 @@ def tracker(classname, time, ret_boxes, past):
             forecast.append(new_box)
 
         trajectory.append(forecast)
-
+    
     for idx in np.arange(len(ret_boxes[-1])):
         curr = ret_boxes[-1][idx]
         velocity = curr.velocity
@@ -377,10 +374,7 @@ def network_split(L):
     return ret
 
 def multi_future(forecast_boxes, classname):
-    if classname == "car":
-        thresh = 0.25
-    else:
-        thresh = 0.125
+    thresh = 0.25
 
     for sample_token in forecast_boxes.keys():
         boxes = [box for box in forecast_boxes[sample_token] if classname in box["detection_name"]]
@@ -464,7 +458,7 @@ def process_trajectories(nusc, sample_token, ret_boxes, forecast, train_dist):
 
     return out_boxes
 
-def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, classname, jitter, K, C, past, det_eval, train_dist, postprocess):
+def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, classname, jitter, K, C, train_dist, postprocess):
     ret_boxes, ret_tokens = [], []
 
     for t in range(forecast):
@@ -475,14 +469,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
     stale = False
     for src, dst in window(ret_tokens, 2):
         elapse_time = get_time(nusc, src, dst)
-
-        if elapse_time == 0 and not det_eval:
-            stale = True 
-
         time.append(elapse_time)
-
-    if stale:
-        return [], ret_tokens
 
 
     if "sparse" in forecast_mode:
@@ -576,7 +563,7 @@ def forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_foreca
 
                 trajectory_boxes.append(boxes)
     else:
-        forecast_boxes = tracker(classname, time, ret_boxes, past)
+        forecast_boxes = tracker(classname, time, ret_boxes)
 
     if forecast_mode in ["velocity_constant", "velocity_forward", "velocity_reverse"]:
         if forecast_mode == "velocity_reverse":
@@ -932,7 +919,7 @@ class NuScenesDataset(PointCloudDataset):
         return self.get_sensor_data(idx)
 
     def evaluation(self, detections, output_dir=None, testset=False, forecast=7, forecast_mode="velocity_forward", classname="car", rerank="last", tp_pct=0.6, root="/ssd0/nperi/nuScenes", 
-                   static_only=False, cohort_analysis=False, nms=False, past=False, det_eval=False, K=1, C=1, split="val", version="v1.0-trainval", eval_only=False, jitter=False, 
+                   static_only=False, cohort_analysis=False, nms=False, K=1, C=1, split="val", version="v1.0-trainval", eval_only=False, jitter=False, 
                    association_oracle=False, postprocess=False, nogroup=False):
         self.eval_version = "detection_forecast"
         name = self._info_path.split("/")[-1].split(".")[0]
@@ -999,7 +986,7 @@ class NuScenesDataset(PointCloudDataset):
 
         if not eval_only:
             for j, det_forecast in enumerate(tqdm(dets)):
-                det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, classname, jitter, K, C, past, det_eval, train_dist, postprocess)
+                det_boxes, tokens = forecast_boxes(nusc, sample_data, scene_data, sample_data_tokens, det_forecast, forecast, forecast_mode, classname, jitter, K, C, train_dist, postprocess)
                 token = tokens[0]
                 annos = []
                 
@@ -1112,8 +1099,6 @@ class NuScenesDataset(PointCloudDataset):
                 topK=K,
                 root=root,
                 association_oracle=association_oracle,
-                past=past,
-                det_eval=det_eval,
                 nogroup=nogroup
             )
 
