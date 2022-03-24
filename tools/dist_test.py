@@ -92,8 +92,6 @@ def parse_args():
     parser.add_argument("--postprocess", action="store_true")
     parser.add_argument("--nogroup", action="store_true")
 
-    parser.add_argument("--nms", action="store_true")
-
     parser.add_argument("--K", default=1, type=int)
     parser.add_argument("--C", default=1, type=float)
 
@@ -258,7 +256,7 @@ def main():
     
     predictions = load_pred(args.work_dir, args.split, args.modelCheckPoint)
     result_dict, _ = dataset.evaluation(copy.deepcopy(predictions), output_dir=args.work_dir, testset=args.testset, forecast=args.forecast, forecast_mode=args.forecast_mode, classname=args.classname,
-                                        rerank=args.rerank, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis, nms=args.nms, 
+                                        rerank=args.rerank, tp_pct=args.tp_pct, root=args.root, static_only=args.static_only, cohort_analysis=args.cohort_analysis,
                                         K=args.K, C=args.C, split=args.split, version=args.version, eval_only=args.eval_only, jitter=args.jitter, 
                                         association_oracle=args.association_oracle, postprocess=args.postprocess, nogroup=args.nogroup)
 
