@@ -3,22 +3,22 @@ import logging
 
 from det3d.utils.config_tool import get_downsample_factor
 
-timesteps = 7
+timesteps = 1
 DOUBLE_FLIP=False
 TWO_STAGE=False
 REVERSE=False 
-SPARSE=True
+SPARSE=False
 DENSE=False
 BEV_MAP=False
 FORECAST_FEATS=False
 CLASSIFY=False
 WIDE=False
 
-sampler_type = "standard"
+sampler_type = "trajectory"
 
 tasks = [
-    dict(num_class=1, class_names=["car"]),
-    #dict(num_class=2, class_names=["pedestrian"]),
+    #dict(num_class=1, class_names=["car"]),
+    dict(num_class=1, class_names=["pedestrian"]),
 ]
 
 class_names = list(itertools.chain(*[t["class_names"] for t in tasks]))
@@ -56,7 +56,7 @@ model = dict(
         tasks=tasks,
         dataset='nuscenes',
         weight=0.25,
-        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0, 1.0],
         common_heads={'reg': (2, 2), 'height': (1, 2), 'dim':(3, 2), 'rot':(2, 2), 'vel': (2, 2)},
         share_conv_channel=64,
         dcn_head=False,
@@ -79,7 +79,7 @@ assigner = dict(
     gaussian_overlap=0.1,
     max_objs=1000,
     min_radius=2,
-    radius_mult = True,
+    radius_mult = False,
     sampler_type=sampler_type,
 )
 
@@ -109,17 +109,17 @@ data_root = "/home/ubuntu/Workspace/Data/nuScenes/trainval_forecast"
 
 if sampler_type == "standard":
     sample_group=[
-        dict(car=2),
-        #dict(pedestrian=2),
+        #dict(car=2),
+        dict(pedestrian=2),
     ]
 else:
     sample_group=[
-        dict(static_car=2),
-        #dict(static_pedestrian=2),
-        dict(linear_car=4),
-        #dict(linear_pedestrian=2),
-        dict(nonlinear_car=6),
-        #dict(nonlinear_pedestrian=4),
+        #dict(static_car=2),
+        dict(static_pedestrian=2),
+        #dict(linear_car=4),
+        dict(linear_pedestrian=2),
+        #dict(nonlinear_car=6),
+        dict(nonlinear_pedestrian=4),
     ]
 
 db_sampler = dict(
@@ -130,8 +130,8 @@ db_sampler = dict(
     db_prep_steps=[
         dict(
             filter_by_min_num_points=dict(
-                car=5,
-                #pedestrian=5,
+                #car=5,
+                pedestrian=5,
             )
         ),
         dict(filter_by_difficulty=[-1],),
