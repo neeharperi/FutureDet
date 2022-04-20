@@ -10,8 +10,8 @@ import pandas as pd
 import pynvml
 import sys
 
-sys.path.append('/home/ubuntu/Workspace/CenterForecast')
-sys.path.append('/home/ubuntu/Workspace/Core/nuscenes-forecast/python-sdk')
+sys.path.append('~/Workspace/FutureDet')
+sys.path.append('~/Workspace/Core/nuscenes-forecast/python-sdk')
 
 
 from nuscenes.eval.detection.constants import getDetectionNames
@@ -83,7 +83,7 @@ except:
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', required=True)
 parser.add_argument('--experiment', required=True)
-parser.add_argument("--rootDirectory", default="/home/ubuntu/Workspace/Data/nuScenes")
+parser.add_argument("--rootDirectory", default="~/Workspace/Data/nuScenes")
 parser.add_argument("--dataset", default="nusc")
 parser.add_argument('--architecture', default="centerpoint")
 parser.add_argument("--extractBox", action="store_true")

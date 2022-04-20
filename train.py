@@ -4,7 +4,7 @@ import pynvml
 import sys
 import pdb 
 
-sys.path.append('/home/nperi/Workspace/CenterForecast')
+sys.path.append('/home/nperi/Workspace/FutureDet')
 sys.path.append('/home/nperi/Workspace/Core/nuscenes-forecast/python-sdk')
 
 parser = argparse.ArgumentParser()

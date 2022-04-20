@@ -191,7 +191,7 @@ def get_annotations(nusc, annotations, ref_boxes, timesteps):
 
     return forecast_boxes, forecast_annotations, forecast_trajectory
 
-nusc = NuScenes(version="v1.0-trainval", dataroot="/home/ubuntu/Workspace/Data/nuScenes", verbose=True)
+nusc = NuScenes(version="v1.0-trainval", dataroot="~/Workspace/Data/nuScenes", verbose=True)
 
 ref_chan = "LIDAR_TOP"  # The radar channel from which we track back n sweeps to aggregate the point cloud.
 chan = "LIDAR_TOP"  # The reference channel of the current sample_rec that the point clouds are mapped to.

@@ -2,8 +2,8 @@ import torch
 import numpy as np
 import pdb 
 
-original = torch.load("/home/nperi/Workspace/CenterForecast/models/Forecast/nusc_centerpoint_forecast_n0_detection/latest.pth")["state_dict"]
-frozen = torch.load("/home/nperi/Workspace/CenterForecast/models/Test/nusc_centerpoint_forecast_n5_t_detection/latest.pth")["state_dict"]
+original = torch.load("/home/nperi/Workspace/FutureDet/models/Forecast/nusc_centerpoint_forecast_n0_detection/latest.pth")["state_dict"]
+frozen = torch.load("/home/nperi/Workspace/FutureDet/models/Test/nusc_centerpoint_forecast_n5_t_detection/latest.pth")["state_dict"]
 
 for key in frozen.keys():
     try:

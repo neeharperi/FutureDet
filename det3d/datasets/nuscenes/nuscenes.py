@@ -1,7 +1,7 @@
 import sys
 
-sys.path.append('/home/ubuntu/Workspace/CenterForecast')
-sys.path.append('/home/ubuntu/Workspace/Core/nuscenes-forecast/python-sdk')
+sys.path.append('~/Workspace/FutureDet')
+sys.path.append('~/Workspace/Core/nuscenes-forecast/python-sdk')
 
 import pickle
 import json
@@ -736,11 +736,15 @@ class NuScenesDataset(PointCloudDataset):
 
             scene_data[scene_token].append(sample_tokens)
         
-        train_trajectories = pickle.load(open("/home/ubuntu/Workspace/CenterForecast/{}_trajectory.pkl".format(classname), "rb"))
+        
         train_dist = []
-        for trajectory in train_trajectories:
-            velocity, rotation = trajectory[0]
-            train_dist.append(np.array(list(velocity) + rotation + list(np.hstack(trajectory[1:]))))
+        try:
+            train_trajectories = pickle.load(open("~/Workspace/FutureDet/{}_trajectory.pkl".format(classname), "rb"))
+            for trajectory in train_trajectories:
+                velocity, rotation = trajectory[0]
+                train_dist.append(np.array(list(velocity) + rotation + list(np.hstack(trajectory[1:]))))
+        except:
+            print("{}_trajectory.pkl Not Found!".format(classname))
 
         train_dist = np.array(train_dist)
 

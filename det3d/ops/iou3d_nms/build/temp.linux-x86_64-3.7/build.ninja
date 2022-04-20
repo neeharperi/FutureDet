@@ -18,10 +18,10 @@ rule cuda_compile
 
 
 
-build /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_cpu.o: compile /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/src/iou3d_cpu.cpp
-build /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_api.o: compile /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/src/iou3d_nms_api.cpp
-build /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms.o: compile /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/src/iou3d_nms.cpp
-build /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_kernel.o: cuda_compile /home/ubuntu/Workspace/CenterForecast/det3d/ops/iou3d_nms/src/iou3d_nms_kernel.cu
+build /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_cpu.o: compile /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/src/iou3d_cpu.cpp
+build /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_api.o: compile /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/src/iou3d_nms_api.cpp
+build /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms.o: compile /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/src/iou3d_nms.cpp
+build /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_kernel.o: cuda_compile /home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/src/iou3d_nms_kernel.cu
 
 
 

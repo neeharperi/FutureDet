@@ -1,15 +1,20 @@
 #!/bin/bash
 source ~/.bashrc
 
+pip install -r requirements.txt
+
+conda install -c anaconda cmake
+conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cudatoolkit=10.1 -c pytorch
+
 export CUDA_HOME=/usr/local/cuda-10.1
 export CUDA_ROOT=/usr/local/cuda-10.1
 
-cd ~/Workspace/CenterForecast/det3d/ops/dcn
+cd ~/Workspace/FutureDet/det3d/ops/dcn
 rm -rf build
 rm deform_conv_cuda.cpython-37m-x86_64-linux-gnu.so
 python setup.py build_ext --inplace
 
-cd ~/Workspace/CenterForecast/det3d/ops/iou3d_nms
+cd ~/Workspace/FutureDet/det3d/ops/iou3d_nms
 rm -rf build
 rm iou3d_nms_cuda.cpython-37m-x86_64-linux-gnu.so
 python setup.py build_ext --inplace

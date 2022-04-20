@@ -3,8 +3,8 @@ import sys
 import argparse
 import pdb
 
-sys.path.append('/home/ubuntu/Workspace/CenterForecast')
-sys.path.append('/home/ubuntu/Workspace/Core/nuscenes-forecast/python-sdk')
+sys.path.append('~/Workspace/FutureDet')
+sys.path.append('~/Workspace/Core/nuscenes-forecast/python-sdk')
 
 import cv2
 import matplotlib
@@ -33,7 +33,7 @@ from pyquaternion import Quaternion
 parser = argparse.ArgumentParser()
 parser.add_argument('--forecast', type=int, default=7)
 parser.add_argument('--classname', default="car")
-parser.add_argument('--rootDirectory', default="/home/ubuntu/Workspace/Data/nuScenes/")
+parser.add_argument('--rootDirectory', default="~/Workspace/Data/nuScenes/")
 
 args = parser.parse_args()
 

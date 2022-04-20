@@ -6,7 +6,7 @@ import os
 import sys
 
 
-sys.path.append('/home/nperi/Workspace/CenterForecast')
+sys.path.append('/home/nperi/Workspace/FutureDet')
 sys.path.append('/home/nperi/Workspace/Core/nuscenes-forecast/python-sdk')
 
 
