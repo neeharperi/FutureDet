@@ -14,7 +14,7 @@ Object detection and forecasting are fundamental components of embodied percepti
       year={2022},
     }
 
-<div style="padding:100% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/701264854?h=c1258bc33f&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;" title="demo.mp4"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>
+<p align="center"> <img src='docs/demo.gif' align="center" height="530px"> </p>
 
 ## Contact
 Any questions or discussion are welcome! Please raise an issue, or send me an email.
