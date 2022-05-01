@@ -10,22 +10,220 @@ Object detection and forecasting are fundamental components of embodied percepti
 <p align="center"> <img src='docs/demo.png' align="center" height="530px"> </p>
 
 ## Contact
-Any questions or discussion are welcome! Please raise an issue, or send me an email.
+Any questions or discussion are welcome! Please raise an issue (preferred), or send me an email.
 
 Neehar Peri [[nperi@cs.cmu.edu](mailto:nperi@cs.cmu.edu)]
 
 ## Installation 
 
-[Forecasting Evaluation Toolkit](https://github.com/neeharperi/nuScenes-Forecast)
+Modified from [det3d](https://github.com/poodarchu/Det3D/tree/56402d4761a5b73acd23080f537599b0888cce07)'s original document.
 
-[Sparse Convolutions (spconv)](https://github.com/neeharperi/spconv)
+### Requirements
 
-[Apex](https://github.com/neeharperi/apex)
+- Linux
+- Python 3.7
+- PyTorch 1.4 or PyTorch 1.8.1
+- CUDA 10.1 or higher
+- CMake 3.13.2 or higher
+- [APEX](https://github.com/neeharperi/apex)
+- [Sparse Convolutions (spconv)](https://github.com/neeharperi/spconv)
 
-## Usage
+#### Notes
+- Installing spconv is the most challenging part of the setup process. We would recommend checking out the issues and documentation from the [original implementation](https://github.com/traveller59/spconv) for common modifications to spconv and PyTorch. 
 
-## Pre-trained Models
-[Model Zoo](https://github.com/neeharperi/FutureDet/MODELZOO.md)
+We have tested the following versions of OS and softwares:
+
+- OS: Ubuntu 18.04
+- Python: 3.7.10 
+- PyTorch: 1.4/1.8.1
+- spconv: 1.0
+- CUDA: 10.1/11.1
+- CUDNN: 7.8.5
+
+As part of this code release we have installed this software and run the training and evaluation scripts on a new machine to verify the installation process described below. 
+
+### Basic Installation 
+
+```bash
+# basic python libraries
+conda create --name futuredet python=3.7
+conda activate futuredet
+conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cudatoolkit=10.1 -c pytorch
+conda install -c anaconda cmake
+git clone git@github.com:neeharperi/FutureDet.git
+cd FutureDet
+pip install -r requirements.txt
+
+# add CenterPoint to PYTHONPATH by adding the following line to ~/.bashrc (change the path accordingly)
+export PYTHONPATH="${PYTHONPATH}:PATH_TO_FUTUREDET"
+```
+
+#### nuScenes end-to-end forecasting dev-kit
+
+```bash
+git clone git@github.com:neeharperi/nuscenes-forecast.git
+
+# add the following line to ~/.bashrc and reactivate bash (remember to change the PATH_TO_NUSCENES_DEVKIT value)
+export PYTHONPATH="${PYTHONPATH}:PATH_TO_NUSCENES_DEVKIT/python-sdk"
+```
+
+Change syspath in the following files
+- train.py
+- evaluate.py
+- trajectory.py
+- visualize.py
+- det3d/datasets/nuscenes/nuscenes.py
+- tools/create_data.py
+- tools/dist_test.py
+
+
+#### Cuda Extensions
+
+```bash
+# set the cuda/cudnn path (change the path to your own cuda location) 
+export PATH=/usr/local/cuda-10.1/bin:$PATH
+export CUDA_PATH=/usr/local/cuda-10.1
+export CUDA_HOME=/usr/local/cuda-10.1
+export CUDNN_PATH=/usr/local/cuda-10.1/cudnn
+export CUDNN_HOME=/usr/local/cuda-10.1/cudnn
+export LD_LIBRARY_PATH=/usr/local/cuda-10.1/lib64:$LD_LIBRARY_PATH
+```
+
+#### APEX (Optional)
+
+```bash
+git clone git@github.com:neeharperi/apex.git
+```
+
+#### spconv
+```bash
+git clone git@github.com:neeharperi/spconv.git
+```
+
+#### Compiling RotatedNMS, APEX, and spconv
+
+'''bash
+# modify path to CUDA and CUDNN in setup.sh
+bash setup.sh
+'''
+
+
+## Use FutureDet
+Be sure to change the paths in configs/
+
+
+### Benchmark Evaluation and Training
+
+#### Prepare Data for Training and Evaluation 
+
+```
+# For nuScenes Dataset         
+└── NUSCENES_DATASET_ROOT
+       ├── samples       <-- key frames
+       ├── sweeps        <-- frames without annotation
+       ├── maps          <-- unused
+       ├── v1.0-trainval <-- metadata
+```
+
+Data creation should be under the gpu environment.
+
+```
+# nuScenes 
+#python tools/create_data.py nuscenes_data_prep --root_path NUSCENES_DATASET_ROOT --version v1.0-trainval --timesteps 7
+
+```
+
+In the end, the data and info files should be organized as follows
+
+```
+# For nuScenes Dataset 
+└── NUSCENES_DATASET_ROOT
+      ├── samples       <-- key frames
+      ├── sweeps        <-- frames without annotation
+      ├── maps          <-- unused
+      |── v1.0-trainval <-- metadata and annotations
+      |__ trainval_forecast
+          |── infos_train_10sweeps_withvelo_filter_True.pkl <-- train annotations
+          |── infos_val_10sweeps_withvelo_filter_True.pkl <-- val annotations
+          |── dbinfos_train_10sweeps_withvelo.pkl <-- GT database info files
+          |── gt_database_10sweeps_withvelo <-- GT database 
+```
+
+
+Use the following command to start a distributed training using 4 GPUs. The models and logs will be saved to ```models/CONFIG_NAME``` 
+
+#### Constant Velocity Model
+```bash
+# Cars
+python train.py --experiment FutureDetection --model forecast_n0
+
+python evaluate.py --experiment FutureDetection --model forecast_n0 --forecast_mode velocity_constant  --cohort_analysis --extractBox
+
+# Pedestrians
+python train.py --experiment FutureDetection --model pedestrian_forecast_n0
+
+python evaluate.py --experiment FutureDetection --model forecast_n0 --forecast_mode velocity_constant  --cohort_analysis --classname pedestrian --extractBox
+```
+
+#### Training FaF*
+```bash
+# Cars
+python train.py --experiment FutureDetection --model forecast_n3
+
+python evaluate.py --experiment FutureDetection --model forecast_n3 --forecast_mode velocity_forward  --cohort_analysis --extractBox
+
+# Pedestrians
+python train.py --experiment FutureDetection --model pedestrian_forecast_n3
+
+python evaluate.py --experiment FutureDetection --model forecast_n3 --forecast_mode velocity_forward  --cohort_analysis --classname pedestrian --extractBox
+```
+
+#### Training FutureDet
+```bash
+# Cars
+python train.py --experiment FutureDetection --model forecast_n3dtf
+
+python evaluate.py --experiment FutureDetection --model forecast_n3dtf --forecast_mode velocity_dense  --cohort_analysis --extractBox
+
+python evaluate.py --experiment FutureDetection --model forecast_n3dtf --forecast_mode velocity_dense  --cohort_analysis --K 5 --eval_only
+
+# Pedestrians
+python train.py --experiment FutureDetection --model pedestrian_forecast_n3dtf
+
+python evaluate.py --experiment FutureDetection --model forecast_n3dtf --forecast_mode velocity_dense  --cohort_analysis --classname pedestrian --extractBox
+
+python evaluate.py --experiment FutureDetection --model forecast_n3dtf --forecast_mode velocity_dense  --cohort_analysis --K 5 --classname pedestrian --eval_only
+```
+#### Evaluation Parameters
+```
+extractBox -> Uses modelCheckPoint to run inference on GPUs and save results to disk
+tp_pct -> TP percentage thresholds for ADE@TP % and FDE@TP %. Setting tp_pct to -1 returns AVG ADE/FDE over all TP threholds.
+static_only -> Rescores stationary objects to have higher confidence. Result from Table 1.
+eval_only -> Uses cached results to run evaluation
+forecast_mode -> Detection association method. [Constant Velocity -> velocity_constant, FaF* -> velocity_forward, FutureDet -> velocity_dense]
+classname -> Select class to evaluate. car and pedestrian currently supported.
+rerank -> Assignment of forecasting score. [last, first, average]
+cohort_analysis -> Reports evaluation metrics per motion subclass static/linear/nonlinear.
+K -> topK evaluation, only useful for FutureDet
+```
+
+### Pre-trained Models
+
+### To Do List
+- [] Support Waymo and Argoverse 2.0 datasets
+- [] Reimplement in MMDetection3D framework
+
+## Acknowlegement
+This project is not possible without multiple great opensourced codebases. We list some notable examples below.  
+
+* [det3d](https://github.com/poodarchu/det3d)
+* [second.pytorch](https://github.com/traveller59/second.pytorch)
+* [CenterTrack](https://github.com/xingyizhou/CenterTrack)
+* [CenterNet](https://github.com/xingyizhou/CenterNet) 
+* [mmcv](https://github.com/open-mmlab/mmcv)
+* [mmdetection](https://github.com/open-mmlab/mmdetection)
+* [OpenPCDet](https://github.com/open-mmlab/OpenPCDet)
+* [CenterPoint](https://github.com/tianweiy/CenterPoint)
 
 If you find this codebase useful, please consider citing:
 
@@ -35,3 +233,4 @@ If you find this codebase useful, please consider citing:
       journal={arXiv:2203.16297},
       year={2022},
     }
+
