@@ -38,7 +38,7 @@ We have tested the following versions of OS and softwares:
 - PyTorch: 1.4/1.8.1
 - spconv: 1.0
 - CUDA: 10.1/11.1
-- CUDNN: 7.8.5
+- CUDNN: 7.6.3
 
 As part of this code release we have installed this software and run the training and evaluation scripts on a new machine to verify the installation process described below. 
 
@@ -46,15 +46,12 @@ As part of this code release we have installed this software and run the trainin
 
 ```bash
 # basic python libraries
-conda create --name futuredet python=3.7
+conda create --name futuredet python=3.7.10
 conda activate futuredet
-conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cudatoolkit=10.1 -c pytorch
-conda install -c anaconda cmake
 git clone git@github.com:neeharperi/FutureDet.git
 cd FutureDet
-pip install -r requirements.txt
 
-# add CenterPoint to PYTHONPATH by adding the following line to ~/.bashrc (change the path accordingly)
+# add FutureDet to PYTHONPATH by adding the following line to ~/.bashrc (change the path accordingly)
 export PYTHONPATH="${PYTHONPATH}:PATH_TO_FUTUREDET"
 ```
 
@@ -165,7 +162,7 @@ python train.py --experiment FutureDetection --model pedestrian_forecast_n0
 python evaluate.py --experiment FutureDetection --model forecast_n0 --forecast_mode velocity_constant  --cohort_analysis --classname pedestrian --extractBox
 ```
 
-#### Training FaF*
+#### FaF*
 ```bash
 # Cars
 python train.py --experiment FutureDetection --model forecast_n3
@@ -178,7 +175,7 @@ python train.py --experiment FutureDetection --model pedestrian_forecast_n3
 python evaluate.py --experiment FutureDetection --model forecast_n3 --forecast_mode velocity_forward  --cohort_analysis --classname pedestrian --extractBox
 ```
 
-#### Training FutureDet
+#### FutureDet
 ```bash
 # Cars
 python train.py --experiment FutureDetection --model forecast_n3dtf
