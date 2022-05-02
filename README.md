@@ -20,10 +20,12 @@ Modified from [det3d](https://github.com/poodarchu/Det3D/tree/56402d4761a5b73acd
 
 ### Requirements
 
-- Linux
-- Python 3.7
-- PyTorch 1.4 or PyTorch 1.8.1
-- CUDA 10.1 or higher
+- OS: Ubuntu 18.04
+- Python: 3.7.10 
+- PyTorch: 1.8.1
+- spconv: 1.0
+- CUDA: 10.1
+- CUDNN: 7.6.5
 - CMake 3.13.2 or higher
 - [APEX](https://github.com/neeharperi/apex)
 - [Sparse Convolutions (spconv)](https://github.com/neeharperi/spconv)
@@ -31,16 +33,7 @@ Modified from [det3d](https://github.com/poodarchu/Det3D/tree/56402d4761a5b73acd
 #### Notes
 - Installing spconv is the most challenging part of the setup process. We would recommend checking out the issues and documentation from the [original implementation](https://github.com/traveller59/spconv) for common modifications to spconv and PyTorch. 
 
-We have tested the following versions of OS and softwares:
-
-- OS: Ubuntu 18.04
-- Python: 3.7.10 
-- PyTorch: 1.4/1.8.1
-- spconv: 1.0
-- CUDA: 10.1/11.1
-- CUDNN: 7.6.3
-
-As part of this code release we have installed this software and run the training and evaluation scripts on a new machine to verify the installation process described below. 
+- As part of this code release we have installed this software and run the training and evaluation scripts on a new AWS instance to verify the installation process described below. 
 
 ### Basic Installation 
 
@@ -55,34 +48,13 @@ cd FutureDet
 export PYTHONPATH="${PYTHONPATH}:PATH_TO_FUTUREDET"
 ```
 
-#### nuScenes end-to-end forecasting dev-kit
-
-```bash
-git clone git@github.com:neeharperi/nuscenes-forecast.git
-
-# add the following line to ~/.bashrc and reactivate bash (remember to change the PATH_TO_NUSCENES_DEVKIT value)
-export PYTHONPATH="${PYTHONPATH}:PATH_TO_NUSCENES_DEVKIT/python-sdk"
-```
-
-Change syspath in the following files
-- train.py
-- evaluate.py
-- trajectory.py
-- visualize.py
-- det3d/datasets/nuscenes/nuscenes.py
-- tools/create_data.py
-- tools/dist_test.py
-
-
 #### Cuda Extensions
 
 ```bash
 # set the cuda/cudnn path (change the path to your own cuda location) 
 export PATH=/usr/local/cuda-10.1/bin:$PATH
-export CUDA_PATH=/usr/local/cuda-10.1
+export CUDA_ROOT=/usr/local/cuda-10.1
 export CUDA_HOME=/usr/local/cuda-10.1
-export CUDNN_PATH=/usr/local/cuda-10.1/cudnn
-export CUDNN_HOME=/usr/local/cuda-10.1/cudnn
 export LD_LIBRARY_PATH=/usr/local/cuda-10.1/lib64:$LD_LIBRARY_PATH
 ```
 
@@ -99,16 +71,30 @@ git clone git@github.com:neeharperi/spconv.git
 
 #### Compiling RotatedNMS, APEX, and spconv
 
-'''bash
-# modify path to CUDA and CUDNN in setup.sh
+```bash
+# modify path to APEX, spconv, CUDA and CUDNN in FutureDet/setup.sh
 bash setup.sh
-'''
+```
 
+#### nuScenes end-to-end forecasting dev-kit
+
+```bash
+git clone git@github.com:neeharperi/nuscenes-forecast.git
+
+# add the following line to ~/.bashrc and reactivate bash (remember to change the PATH_TO_NUSCENES_DEVKIT value)
+export PYTHONPATH="${PYTHONPATH}:PATH_TO_NUSCENES_DEVKIT/python-sdk"
+```
 
 ## Use FutureDet
-Be sure to change the paths in configs/
-
-
+Be sure to change the paths in configs and syspath in the following files:
+- train.py
+- evaluate.py
+- trajectory.py
+- visualize.py
+- det3d/datasets/nuscenes/nuscenes.py
+- tools/create_data.py
+- tools/dist_test.py
+- 
 ### Benchmark Evaluation and Training
 
 #### Prepare Data for Training and Evaluation 
@@ -122,7 +108,7 @@ Be sure to change the paths in configs/
        ├── v1.0-trainval <-- metadata
 ```
 
-Data creation should be under the gpu environment.
+Data creation should be under the GPU environment.
 
 ```
 # nuScenes 
@@ -190,6 +176,7 @@ python train.py --experiment FutureDetection --model pedestrian_forecast_n3dtf
 python evaluate.py --experiment FutureDetection --model forecast_n3dtf --forecast_mode velocity_dense  --cohort_analysis --classname pedestrian --extractBox
 
 python evaluate.py --experiment FutureDetection --model forecast_n3dtf --forecast_mode velocity_dense  --cohort_analysis --K 5 --classname pedestrian --eval_only
+
 ```
 #### Evaluation Parameters
 ```
@@ -204,7 +191,7 @@ cohort_analysis -> Reports evaluation metrics per motion subclass static/linear/
 K -> topK evaluation, only useful for FutureDet
 ```
 
-### Pre-trained Models
+### [Pre-trained Models](https://drive.google.com/drive/folders/1JwtWIxz8mb2JmdAcVWa4VBXTm3UBHasM?usp=sharing)
 
 ### To Do List
 - [] Support Waymo and Argoverse 2.0 datasets
