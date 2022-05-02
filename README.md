@@ -184,7 +184,7 @@ cohort_analysis -> Reports evaluation metrics per motion subclass static/linear/
 K -> topK evaluation, only useful for FutureDet
 ```
 
-### [Pre-trained Models](https://drive.google.com/drive/folders/1JwtWIxz8mb2JmdAcVWa4VBXTm3UBHasM?usp=sharing)
+### [Pre-trained Models](https://drive.google.com/drive/folders/18fvE3MvXQGDThIPs9iFjQMuUJp5_waxp?usp=sharing)
 
 ### To Do List
 - Support Waymo and Argoverse 2.0 datasets
