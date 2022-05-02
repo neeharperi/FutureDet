@@ -1,4 +1,4 @@
-# (Refactor In Progress) Forecasting from LiDAR via Future Object Detection [[PDF](https://arxiv.org/pdf/2203.16297.pdf)]
+# Forecasting from LiDAR via Future Object Detection [[PDF](https://arxiv.org/pdf/2203.16297.pdf)]
 
 Neehar Peri, Jonathon Luiten, Mengtian Li, Aljosa Osep, Laura Leal-Taixe, Deva Ramanan
 
