@@ -38,30 +38,20 @@ Modified from [det3d](https://github.com/poodarchu/Det3D/tree/56402d4761a5b73acd
 ### Basic Installation 
 
 ```bash
-# basic python libraries
+# Basic python libraries
 conda create --name futuredet python=3.7.10
 conda activate futuredet
 git clone git@github.com:neeharperi/FutureDet.git
-cd FutureDet
-
-# add FutureDet to PYTHONPATH by adding the following line to ~/.bashrc (change the path accordingly)
-export PYTHONPATH="${PYTHONPATH}:PATH_TO_FUTUREDET"
 ```
 
-#### Cuda Extensions
+#### CUDA Extensions
 
 ```bash
-# set the cuda/cudnn path (change the path to your own cuda location) 
+# Set the CUDA/CuDNN path (change the path to your own CUDA location) 
 export PATH=/usr/local/cuda-10.1/bin:$PATH
 export CUDA_ROOT=/usr/local/cuda-10.1
 export CUDA_HOME=/usr/local/cuda-10.1
 export LD_LIBRARY_PATH=/usr/local/cuda-10.1/lib64:$LD_LIBRARY_PATH
-```
-
-#### APEX (Optional)
-
-```bash
-git clone git@github.com:neeharperi/apex.git
 ```
 
 #### spconv
@@ -69,20 +59,23 @@ git clone git@github.com:neeharperi/apex.git
 git clone git@github.com:neeharperi/spconv.git
 ```
 
-#### Compiling RotatedNMS, APEX, and spconv
+#### APEX
 
 ```bash
-# modify path to APEX, spconv, CUDA and CUDNN in FutureDet/setup.sh
-bash setup.sh
+git clone git@github.com:neeharperi/apex.git
 ```
 
 #### nuScenes end-to-end forecasting dev-kit
 
 ```bash
 git clone git@github.com:neeharperi/nuscenes-forecast.git
+```
 
-# add the following line to ~/.bashrc and reactivate bash (remember to change the PATH_TO_NUSCENES_DEVKIT value)
-export PYTHONPATH="${PYTHONPATH}:PATH_TO_NUSCENES_DEVKIT/python-sdk"
+#### Compiling RotatedNMS, APEX, and spconv
+
+```bash
+# Modify path to APEX, spconv, CUDA and CUDNN in FutureDet/setup.sh
+bash setup.sh
 ```
 
 ## Use FutureDet
@@ -133,7 +126,7 @@ In the end, the data and info files should be organized as follows
 ```
 
 
-Use the following command to start a distributed training using 4 GPUs. The models and logs will be saved to ```models/CONFIG_NAME``` 
+Use the following command to start a distributed training and evaluation. The models and logs will be saved to ```models/CONFIG_NAME```. Results will be save to ```results/CONFIG_NAME``` 
 
 #### Constant Velocity Model
 ```bash
@@ -194,8 +187,8 @@ K -> topK evaluation, only useful for FutureDet
 ### [Pre-trained Models](https://drive.google.com/drive/folders/1JwtWIxz8mb2JmdAcVWa4VBXTm3UBHasM?usp=sharing)
 
 ### To Do List
-- [] Support Waymo and Argoverse 2.0 datasets
-- [] Reimplement in MMDetection3D framework
+- Support Waymo and Argoverse 2.0 datasets
+- Reimplement in MMDetection3D framework
 
 ## Acknowlegement
 This project is not possible without multiple great opensourced codebases. We list some notable examples below.  
