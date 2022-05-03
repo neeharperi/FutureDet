@@ -4,7 +4,7 @@ fire
 protobuf                                                                                                  
 opencv-python                                                                                             
 opencv-contrib-python                                                                                     
-pybind11                                                                                                                                                                                                                                                                                                             
+pybind11
 easydict                                                                                                  
 open3d-python                                                                                             
 terminaltables                                                                                            
@@ -28,3 +28,4 @@ tqdm
 pyyaml
 requests
 pynvml
+mkl

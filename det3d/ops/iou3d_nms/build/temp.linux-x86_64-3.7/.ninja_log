@@ -1,5 +1,0 @@
-# ninja log v5
-2	2256	1635343780650507064	/home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_kernel.o	8c9fd717dcbb7f48
-1	15940	1635343794334487682	/home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_cpu.o	1df71e6511ffd1dd
-2	16343	1635343794738487110	/home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms.o	709ec31fd065217e
-1	23275	1635343801666477297	/home/ubuntu/Workspace/FutureDet/det3d/ops/iou3d_nms/build/temp.linux-x86_64-3.7/src/iou3d_nms_api.o	569457fb68e44f6b

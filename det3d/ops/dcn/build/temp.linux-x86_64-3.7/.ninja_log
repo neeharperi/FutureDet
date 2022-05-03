@@ -1,3 +1,0 @@
-# ninja log v5
-1	18706	1635343768838523795	/home/ubuntu/Workspace/FutureDet/det3d/ops/dcn/build/temp.linux-x86_64-3.7/src/deform_conv_cuda_kernel.o	af573502c5363dd8
-1	26483	1635343776614512781	/home/ubuntu/Workspace/FutureDet/det3d/ops/dcn/build/temp.linux-x86_64-3.7/src/deform_conv_cuda.o	8d7746a20c955c73

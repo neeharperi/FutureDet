@@ -4,6 +4,7 @@ source ~/.bashrc
 pip install -r requirements.txt
 
 conda install -c anaconda cmake
+conda install mkl-service
 #conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cudatoolkit=10.1 -c pytorch
 pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
 
