@@ -87,7 +87,7 @@ Be sure to change the paths in configs and syspath in the following files:
 - det3d/datasets/nuscenes/nuscenes.py
 - tools/create_data.py
 - tools/dist_test.py
-- 
+
 ### Benchmark Evaluation and Training
 
 #### Prepare Data for Training and Evaluation 
